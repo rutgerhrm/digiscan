@@ -13,8 +13,6 @@ from javax.swing import (JButton, JPanel, JTextField, JLabel, JScrollPane, JText
 from javax.swing.border import EmptyBorder
 from java.awt import BorderLayout, Font, Dimension, FlowLayout
 from threading import Thread
-
-# Import your custom module
 import check_uwa05
 
 class BurpExtender(IBurpExtender, ITab):
@@ -96,7 +94,7 @@ class BurpExtender(IBurpExtender, ITab):
             self.statusBar.setText("Status: Please enter a valid URL to scan.")
             self.resultTextPane.setText("<html><body>Please enter a valid URL to scan.</body></html>")
             return
-        
+
         norms_to_check = [chk.getText() for chk in [self.checkboxUWA05, self.checkboxUPW03, self.checkboxUPW05, self.checkboxUC09] if chk.isSelected()]
         if not norms_to_check:
             self.statusBar.setText("Status: Please select at least one norm to check.")
@@ -126,10 +124,10 @@ class BurpExtender(IBurpExtender, ITab):
             display_html += "</body></html>"
 
             # Update UI in a thread-safe way
-            SwingUtilities.invokeLater(Runnable(lambda: self.updateUI(display_html)))
+            SwingUtilities.invokeLater(lambda: self.updateUI(display_html))
         except Exception as e:
             error_message = "<html><body>An error occurred: {e}</body></html>".format(e=str(e))
-            SwingUtilities.invokeLater(Runnable(lambda: self.showError(error_message)))
+            SwingUtilities.invokeLater(lambda: self.showError(error_message))
 
     def updateUI(self, display_html):
         self.resultTextPane.setText(display_html)
