@@ -21,7 +21,7 @@ To install DigiScan:
 1. Download the latest release from the [release page](https://github.com/hacksclusive/digiscan/releases/), or try to:
 2. Clone the repository:
    ```bash
-   git clone https://github.com/rutgerhrm/digiscan.git
+   git clone https://github.com/hacksclusive/digiscan.git
    ```
 3. Open Burp Suite and navigate to the Extender tab.
 4. Load the run file `main.py` under Burp Extensions > Add.
