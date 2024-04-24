@@ -114,13 +114,26 @@ class BurpExtender(IBurpExtender, ITab):
                 if json_output:
                     results['U/WA.05'] = check_uwa05.filter_keys(json_output)
 
-            display_html = "<html><body><h2>Results of U/WA.05 Check</h2>"
+            # Placeholders for other norm checks
+            # if 'U/PW.03' in norms_to_check:
+            #     results['U/PW.03'] = check_upw03.filter_keys(json_output)
+            # if 'U/PW.05' in norms_to_check:
+            #     results['U/PW.05'] = check_upw05.filter_keys(json_output)
+            # if 'C.09' in norms_to_check:
+            #     results['C.09'] = check_c09.filter_keys(json_output)
+
+            display_html = "<html><body>"
             for norm, data in results.items():
+                # Reduce the margin-bottom for the title to decrease space between title and results
+                display_html += "<h2 style='margin-bottom: 5px;'>{} Check Results</h2>".format(norm)
                 for result in data:
                     icon = '&#9989;' if result['status'] == 'pass' else '&#9888;' if result['status'] == 'warning' else '&#10060;'
-                    display_html += "<p><span style='color: {}; font-weight: bold;'>{} </span>{}<br><i>{}<br></i></p>".format(
+                    # Apply margin-bottom to each paragraph to control spacing between results
+                    display_html += "<p style='margin-bottom: 10px;'><span style='color: {}; font-weight: bold;'>{} </span>{}<br><i>Advice: {}<br></i></p>".format(
                         'green' if result['status'] == 'pass' else 'orange' if result['status'] == 'warning' else 'red', 
-                        icon, result['description'], result.get('advice', 'No additional advice.'))
+                        icon, result['description'], result.get('advice', 'Please comply with best practices.'))
+                # Add extra margin above the horizontal line for more space before the separator
+                display_html += "<div style='margin-top: 20px;'><hr></div>"
             display_html += "</body></html>"
 
             # Update UI in a thread-safe way
