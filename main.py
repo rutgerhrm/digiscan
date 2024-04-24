@@ -114,19 +114,19 @@ class BurpExtender(IBurpExtender, ITab):
                 if json_output:
                     results['U/WA.05'] = check_uwa05.filter_keys(json_output)
 
-            display_html = "<html><body>"
+            display_html = "<html><body><h2>Results of U/WA.05 Check</h2>"
             for norm, data in results.items():
-                display_html += "<h3>Results for {norm}</h3>".format(norm=norm)
-                display_html += "<ul>"
-                for key, value in data.items():
-                    display_html += "<li>{key}: {value}</li>".format(key=key, value=value)
-                display_html += "</ul>"
+                for result in data:
+                    icon = '&#9989;' if result['status'] == 'pass' else '&#9888;' if result['status'] == 'warning' else '&#10060;'
+                    display_html += "<p><span style='color: {}; font-weight: bold;'>{} </span>{}<br><i>{}<br></i></p>".format(
+                        'green' if result['status'] == 'pass' else 'orange' if result['status'] == 'warning' else 'red', 
+                        icon, result['description'], result.get('advice', 'No additional advice.'))
             display_html += "</body></html>"
 
             # Update UI in a thread-safe way
             SwingUtilities.invokeLater(lambda: self.updateUI(display_html))
         except Exception as e:
-            error_message = "<html><body>An error occurred: {e}</body></html>".format(e=str(e))
+            error_message = "<html><body>An error occurred: {}</body></html>".format(str(e))
             SwingUtilities.invokeLater(lambda: self.showError(error_message))
 
     def updateUI(self, display_html):
