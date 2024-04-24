@@ -18,21 +18,21 @@ DigiScan provides automated security configuration validation against DigiD norm
 ## Installation
 To install DigiScan:
 
-1. Download the latest release from the releases page.
+1. Download the latest release from the [release page](https://github.com/hacksclusive/digiscan/releases/), or try to:
 2. Clone the repository:
-   ```git clone https://github.com/rutgerhrm/digiscan.git```
-3. Navigate to the cloned directory:
-   ```cd digiscan```
-4. Load the extension in Burp Suite via the Extender tab.
+   ```bash
+   git clone https://github.com/rutgerhrm/digiscan.git
+   ```
+3. Open Burp Suite and navigate to the Extender tab.
+4. Load the run file `main.py` under Burp Extensions > Add.
 
 ---
 
 ## Usage
-1. Open Burp Suite and navigate to the Extender tab.
-2. Install DigiScan as a Java extension.
-3. Set your target settings in the DigiScan tab.
-4. Press "Start Scan" to begin the compliance checks.
-5. View detailed results in the DigiScan panel.
+1. Open Burp Suite and navigate to the DigiScan tab.
+2. Set your target and scan settings in the DigiScan tab.
+3. Press "Start Scan" to begin the compliance checks.
+4. View detailed results and potential advice in the DigiScan panel.
 
 ### Example
 Hier komt een voorbeeld run van de tool
