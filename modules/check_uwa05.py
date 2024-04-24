@@ -1,6 +1,7 @@
 import json
 import subprocess
 import os
+import re
 from urlparse import urlparse  # Ensure compatibility with Python 2.7
 
 def run_testssl(target_url):
@@ -49,15 +50,38 @@ def filter_keys(json_file_path):
 
 def check_compliance(data):
     results = []
-    required_keys = ["SSLv2", "SSLv3", "TLS1", "TLS1_1", "TLS1_2", "TLS1_3",
-                     "FS_ciphers", "OCSP_stapling", "cert_keySize", "FS_ECDHE_curves",
-                     "HSTS_time", "secure_renego", "DH_groups"]
+    required_keys = {
+        "SSLv2", "SSLv3", "TLS1", "TLS1_1", "TLS1_2", "TLS1_3",
+        "FS_ciphers", "OCSP_stapling", "cert_keySize", "FS_ECDHE_curves",
+        "HSTS_time", "secure_renego", "DH_groups"
+    }
+    
+    # Create a dictionary to check which keys were found
+    found_keys = {key: False for key in required_keys}
+    
+    # Check each item in the JSON data
     for item in data:
-        if item['id'] in required_keys:
-            result = check_key_compliance(item['id'], item['finding'])
+        key = item['id']
+        if key in required_keys:
+            found_keys[key] = True
+            result = check_key_compliance(key, item['finding'])
             if result:
                 results.append(result)
+    
+    # Check for any required keys that were not found in the JSON data
+    for key, found in found_keys.items():
+        if not found:
+            results.append({
+                'description': '{} is missing'.format(key),
+                'status': 'fail',
+                'advice': 'Ensure that ' + key + ' is correctly configured and included in the security assessment.'
+            })
+    
+    # Sort results by status importance
+    results.sort(key=lambda x: {"fail": 0, "warning": 1, "pass": 2}[x['status']])
+    
     return results
+
 
 def check_key_compliance(key, finding):
     # Check compliance for SSL and/or TLS versions
@@ -102,12 +126,10 @@ def check_key_compliance(key, finding):
 
     # Check for Certificate Key Size
     if key == "cert_keySize":
-        # Convert the finding to Unicode if it's not already and filter digits
-        if isinstance(finding, str):
-            finding = unicode(finding)  # Ensure finding is treated as a Unicode string
-        key_size_str = ''.join([c for c in finding if c.isdigit()])
-
-        if key_size_str:
+        # This regex matches any sequence of digits that are followed by ' bits'
+        key_size_match = re.search(r'(\d+)\s*bits', finding)
+        if key_size_match:
+            key_size_str = key_size_match.group(1)  # Extracts the first group of digits before ' bits'
             try:
                 key_size = int(key_size_str)
                 if key_size < 2048:
@@ -115,14 +137,14 @@ def check_key_compliance(key, finding):
                 elif key_size == 2048:
                     return {'description': 'Certificate key size is exactly 2048 bits', 'status': 'warning', 'advice': 'Consider upgrading to a higher bit size for enhanced security'}
                 elif key_size < 3072:
-                    return {'description': 'Certificate key size is between 2048 and 3071 bits', 'status': 'warning', 'advice': 'Consider upgrading to a higher bit size for enhanced security'}
+                    return {'description': 'Certificate key size is between 2048 and 3071 bits', 'status': 'warning', 'advice': 'Consider upgrading to 3072 bits or more for enhanced security'}
                 else:
-                    return {'description': 'Certificate key size is 3072 bits or more', 'status': 'warning'}
+                    return {'description': 'Certificate key size is 3072 bits or more', 'status': 'pass'}
             except ValueError:
                 return {'description': 'Unable to parse certificate key size', 'status': 'fail', 'advice': 'Check the certificate key size format'}
         else:
             return {'description': 'No numeric data found in certificate key size', 'status': 'fail', 'advice': 'Verify certificate key size data'}
-
+            
     # Check for DH Groups
     if key == "DH_groups":
         if "ffdhe4096" in finding or "ffdhe3072" in finding:
@@ -130,5 +152,78 @@ def check_key_compliance(key, finding):
         else:
             return {'description': 'DH Groups configuration is non-compliant', 'status': 'fail', 'advice': 'Ensure DH Groups include ffdhe4096 or ffdhe3072'}
 
-    # Add checks for other keys as necessary using a similar pattern
+    if key == "FS_ciphers":
+        # Define cipher suites categories
+        pass_ciphers = {
+            'key_exchange': ['ECDHE'],
+            'certificate': ['ECDSA'],
+            'encryption': ['AES_256_GCM', 'CHACHA20_POLY1305', 'AES_128_GCM'],
+            'hash': ['SHA384', 'SHA256']
+        }
+        warning_ciphers = {
+            'encryption': ['AES_256_CBC', 'AES_128_CBC'],
+            'hash': ['SHA1']
+        }
+        fail_ciphers = {
+            'key_exchange': ['TLS_RSA_WITH'],
+            'encryption': ['3DES_EDE_CBC', 'DES_CBC3']
+        }
+
+        # Analyzing the finding for cipher status
+        ciphers = finding.split()
+        statuses = []
+
+        for cipher in ciphers:
+            status = 'pass'  # Default status
+            for category, values in fail_ciphers.items():
+                if any(value in cipher for value in values):
+                    status = 'fail'
+                    break
+            if status != 'fail':
+                for category, values in warning_ciphers.items():
+                    if any(value in cipher for value in values):
+                        status = 'warning'
+                        break
+            if status != 'fail' and status != 'warning':
+                if not any(any(value in cipher for value in pass_ciphers[cat]) for cat in pass_ciphers):
+                    status = 'fail'  # If none of the pass conditions are met, default to fail
+
+            statuses.append((cipher, status))
+
+        description = ', '.join(["{} ({})".format(cipher, stat) for cipher, stat in statuses])
+        overall_status = 'pass' if all(stat == 'pass' for _, stat in statuses) else 'warning' if any(stat == 'warning' for _, stat in statuses) else 'fail'
+
+        return {'description': "FS Ciphers evaluation: {}".format(description), 'status': overall_status, 'advice': "Review cipher suite configuration according to the latest security standards."}
+
+    if key == "FS_ECDHE_curves":
+        # Define acceptable curve standards
+        pass_curves = ["secp384r1", "secp256r1", "x448", "x25519"]
+        warning_curves = ["secp224r1"]
+        curves = finding.split()
+        
+        # Analyze the curve findings
+        result_details = []
+        for curve in curves:
+            if curve in pass_curves:
+                result_details.append((curve, 'pass'))
+            elif curve in warning_curves:
+                result_details.append((curve, 'warning'))
+            else:
+                result_details.append((curve, 'fail'))
+        
+        # Determine overall status based on presence of any fail or warning curves
+        if any(curve_status == 'fail' for _, curve_status in result_details):
+            overall_status = 'fail'
+        elif any(curve_status == 'warning' for _, curve_status in result_details):
+            overall_status = 'warning'
+        else:
+            overall_status = 'pass'
+        
+        description = ', '.join(["{} ({})".format(curve, status) for curve, status in result_details])
+        return {
+            'description': "ECDHE Curves evaluation: {}".format(description),
+            'status': overall_status,
+            'advice': "Review ECDHE curve configurations to ensure they align with current security standards."
+        }
+
     return None
