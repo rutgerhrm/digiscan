@@ -125,15 +125,15 @@ class BurpExtender(IBurpExtender, ITab):
             display_html = "<html><body>"
             for norm, data in results.items():
                 # Reduce the margin-bottom for the title to decrease space between title and results
-                display_html += "<h2 style='margin-bottom: 5px;'>{} Check Results</h2>".format(norm)
+                display_html += "<h2 style='margin-bottom: 1px;'>{} Check Results</h2>".format(norm)
                 for result in data:
                     icon = '&#9989;' if result['status'] == 'pass' else '&#9888;' if result['status'] == 'warning' else '&#10060;'
                     # Apply margin-bottom to each paragraph to control spacing between results
-                    display_html += "<p style='margin-bottom: 10px;'><span style='color: {}; font-weight: bold;'>{} </span>{}<br><i>Advice: {}<br></i></p>".format(
+                    display_html += "<p style='margin-bottom: 1px;'><span style='color: {}; font-weight: bold;'>{} </span>{}<br><i>Advice: {}<br></i></p>".format(
                         'green' if result['status'] == 'pass' else 'orange' if result['status'] == 'warning' else 'red', 
                         icon, result['description'], result.get('advice', 'Please comply with best practices.'))
                 # Add extra margin above the horizontal line for more space before the separator
-                display_html += "<div style='margin-top: 20px;'><hr></div>"
+                display_html += "<div style='margin-top: 10px;'><hr></div>"
             display_html += "</body></html>"
 
             # Update UI in a thread-safe way
