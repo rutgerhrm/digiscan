@@ -53,7 +53,7 @@ def check_compliance(data):
     required_keys = {
         "SSLv2", "SSLv3", "TLS1", "TLS1_1", "TLS1_2", "TLS1_3",
         "FS_ciphers", "OCSP_stapling", "cert_keySize", "FS_ECDHE_curves",
-        "HSTS_time", "secure_renego", "DH_groups"
+        "secure_renego", "DH_groups"
     }
     
     # Create a dictionary to check which keys were found
@@ -112,17 +112,6 @@ def check_key_compliance(key, finding):
             return {'description': 'Secure Renegotiation is supported', 'status': 'pass'}
         else:
             return {'description': 'Secure Renegotiation is not supported', 'status': 'fail', 'advice': 'Ensure secure renegotiation is supported'}
-
-    # Check for HSTS Time
-    if key == "HSTS_time":
-        try:
-            hsts_seconds = int(finding.split(" ")[2].strip("()=").split(" ")[0])
-            if hsts_seconds >= 31536000:
-                return {'description': 'HSTS time meets or exceeds the requirement', 'status': 'pass'}
-            else:
-                return {'description': 'HSTS time is below the required 31536000 seconds', 'status': 'fail', 'advice': 'Increase HSTS time'}
-        except (IndexError, ValueError):
-            return {'description': 'HSTS time format is incorrect or missing', 'status': 'fail', 'advice': 'Check HSTS time format'}
 
     # Check for Certificate Key Size
     if key == "cert_keySize":
