@@ -9,11 +9,13 @@ sys.path.append(modules_dir)
 from burp import IBurpExtender, ITab
 from java.io import PrintWriter
 from javax.swing import (JButton, JPanel, JTextField, JLabel, JScrollPane, JTextPane, JSplitPane,
-                         BoxLayout, SwingConstants, SwingUtilities, BorderFactory, JCheckBox)
+                         BoxLayout, SwingConstants, SwingUtilities, BorderFactory, JCheckBox, JLabel)
 from javax.swing.border import EmptyBorder
 from java.awt import BorderLayout, Font, Dimension, FlowLayout
+import time
 from threading import Thread
 import check_uwa05
+import check_upw03
 
 class BurpExtender(IBurpExtender, ITab):
     def registerExtenderCallbacks(self, callbacks):
@@ -109,14 +111,21 @@ class BurpExtender(IBurpExtender, ITab):
     def runScan(self, host, norms_to_check):
         try:
             results = {}
+            json_output_path = None
+
             if 'U/WA.05' in norms_to_check:
-                json_output = check_uwa05.run_testssl(host)
-                if json_output:
-                    results['U/WA.05'] = check_uwa05.filter_keys(json_output)
+                json_output_path = check_uwa05.run_testssl(host)
+                if json_output_path:
+                    results['U/WA.05'] = check_uwa05.filter_keys(json_output_path)
+
+            # Use the same JSON file for U/PW.03 if available, else run the testssl script
+            if 'U/PW.03' in norms_to_check:
+                if not json_output_path:  # If U/WA.05 wasn't selected, we need to run the testssl script
+                    json_output_path = check_upw03.run_testssl(host)
+                if json_output_path:
+                    results['U/PW.03'] = check_upw03.filter_keys(json_output_path)
 
             # Placeholders for other norm checks
-            # if 'U/PW.03' in norms_to_check:
-            #     results['U/PW.03'] = check_upw03.filter_keys(json_output)
             # if 'U/PW.05' in norms_to_check:
             #     results['U/PW.05'] = check_upw05.filter_keys(json_output)
             # if 'C.09' in norms_to_check:
