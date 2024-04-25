@@ -35,7 +35,12 @@ def run_testssl(target_url):
     return json_file_path
 
 def filter_keys(json_file_path):
-    required_keys = {"cookie_secure", "cookie_httponly", "HSTS_time", "X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy"}
+    required_keys = {
+        "cookie_secure", "cookie_httponly", "HSTS_time", 
+        "X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy",
+        "Content-Security-Policy"  # Ensure CSP is included
+    }
+
     try:
         with open(json_file_path, 'r') as file:
             data = json.load(file)
@@ -43,49 +48,81 @@ def filter_keys(json_file_path):
         print("Error reading or parsing JSON file: {}".format(str(e)))
         return []
 
+    found_keys = {key: False for key in required_keys}
     results = []
+
     for item in data:
         key = item['id']
         if key in required_keys:
+            found_keys[key] = True  # Mark the key as found
             result = check_header_compliance(key, item['finding'])
             if result:
                 results.append(result)
 
+    # Check for any required keys that were not found in the JSON data
+    for key, found in found_keys.items():
+        if not found:
+            results.append({
+                'description': '{} is missing'.format(key),
+                'status': 'fail',
+                'advice': 'Ensure that ' + key + ' is correctly configured and included in the security assessment.'
+            })
+
     # Sort results by status importance
     results.sort(key=lambda x: {"fail": 0, "warning": 1, "pass": 2}[x['status']])
     return results
+
 
 def check_header_compliance(key, finding):
     if key == "HSTS_time":
         try:
             hsts_seconds = int(finding.split(" ")[2].strip("()=").split(" ")[0])
             if hsts_seconds >= 31536000:
-                return {'description': '{} time meets or exceeds the requirement'.format(key), 'status': 'pass'}
+                return {'description': 'HSTS time meets or exceeds the requirement of 31536000 seconds', 'status': 'pass'}
             else:
-                return {'description': '{} time is below the required 31536000 seconds'.format(key), 'status': 'fail', 'advice': 'Increase {} time'.format(key)}
+                return {'description': 'HSTS time is below the required 31536000 seconds', 'status': 'fail', 'advice': 'Increase HSTS time to at least 31536000 seconds'}
         except (IndexError, ValueError):
-            return {'description': '{} time format is incorrect or missing'.format(key), 'status': 'fail', 'advice': 'Check {} time format'.format(key)}
-    if key in ["cookie_secure", "cookie_httponly"]:
-        if finding.lower() == "set":
-            return {'description': '{} is properly set'.format(key), 'status': 'pass'}
-        else:
-            return {'description': '{} is not set'.format(key), 'status': 'fail', 'advice': 'Set {} to enhance security'.format(key)}
+            return {'description': 'HSTS time format is incorrect or missing', 'status': 'fail', 'advice': 'Check HSTS time format'}
+
     if key == "X-Frame-Options":
-        if finding.lower() in ["sameorigin", "deny"]:
+        valid_options = ["deny", "sameorigin"]
+        if finding.lower() in valid_options:
             return {'description': '{} is properly set to {}'.format(key, finding), 'status': 'pass'}
         else:
-            return {'description': '{} setting is not optimal'.format(key), 'status': 'warning', 'advice': 'Set {} to either "SAMEORIGIN" or "DENY"'.format(key)}
+            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "DENY" or "SAMEORIGIN"'.format(key)}
+
     if key == "X-Content-Type-Options":
         if finding.lower() == "nosniff":
             return {'description': '{} is set to nosniff'.format(key), 'status': 'pass'}
         else:
             return {'description': '{} is not set to nosniff'.format(key), 'status': 'fail', 'advice': 'Set {} to "nosniff"'.format(key)}
+
     if key == "Referrer-Policy":
-        recommended_policies = ["no-referrer", "strict-origin-when-cross-origin"]
-        if finding.lower() in recommended_policies:
+        valid_policies = ["same-origin", "noreferrer"]
+        if finding.lower() in valid_policies:
             return {'description': '{} is adequately set to {}'.format(key, finding), 'status': 'pass'}
         else:
-            return {'description': '{} setting is not optimal'.format(key), 'status': 'warning', 'advice': 'Set {} to a more restrictive setting like "no-referrer" or "strict-origin-when-cross-origin"'.format(key)}
+            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "same-origin" or "noreferrer"'.format(key)}
+
+
+    if key == "Content-Security-Policy":
+        csp_errors = []
+        if "'unsafe-inline'" in finding and "nonce" not in finding:
+            csp_errors.append("Contains 'unsafe-inline' without 'nonce'")
+        if "'unsafe-eval'" in finding:
+            csp_errors.append("Contains 'unsafe-eval'")
+        if "http:" in finding:
+            csp_errors.append("Contains HTTP sources which are insecure")
+
+        required_directives = ["default-src 'self'", "frame-src 'self'", "frame-ancestors 'self'"]
+        for directive in required_directives:
+            if directive not in finding:
+                csp_errors.append("Missing directive: {}".format(directive))
+
+        if csp_errors:
+            return {'description': '{} has issues: {}'.format(key, ', '.join(csp_errors)), 'status': 'fail', 'advice': 'Adjust CSP to conform to DigiD standards: {}'.format(', '.join(csp_errors))}
+        else:
+            return {'description': '{} is correctly configured according to DigiD standards'.format(key), 'status': 'pass'}
+
 
     return None
-
