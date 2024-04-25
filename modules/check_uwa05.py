@@ -197,7 +197,7 @@ def check_key_compliance(key, finding):
 
     if key == "FS_ECDHE_curves":
         # Define acceptable curve standards
-        pass_curves = ["secp384r1", "secp256r1", "x448", "x25519"]
+        pass_curves = ["secp384r1", "secp256r1", "X448", "X25519"]
         warning_curves = ["secp224r1"]
         curves = finding.split()
         
