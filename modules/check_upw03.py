@@ -120,7 +120,7 @@ def parse_ffuf_output(json_file_path):
     for result in data.get('results', []):
         results.append({
             'description': 'Found: {} at {}'.format(result['input']['FUZZ'], result['url']),
-            'status': 'fail',  # assuming any found item is a fail condition
+            'status': 'warning', 
             'advice': 'Check the exposure of this directory/file.'
         })
     return results
