@@ -4,7 +4,6 @@ import os
 from urlparse import urlparse  # For Python 2.7 compatibility, use urllib.parse in Python 3.x
 
 def run_testssl(target_url):
-    # Using the same logic and setup as in check_uwa05.py
     testssl_script_path = "/home/kali/Desktop/Hacksclusive/testssl.sh/testssl.sh"
     output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
     if not os.path.exists(output_dir):
@@ -72,6 +71,59 @@ def filter_keys(json_file_path):
     results.sort(key=lambda x: {"fail": 0, "warning": 1, "pass": 2}[x['status']])
     return results
 
+def run_ffuf_scan(target_url):
+    wordlist_path = "/home/kali/Desktop/Hacksclusive/DigiScan/resources/wordlist.txt"
+    output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    parsed_url = urlparse(target_url)
+    safe_filename = parsed_url.netloc.replace(":", "_").replace("/", "_")
+    json_filename = "ffuf_output_{}.json".format(safe_filename)
+    json_file_path = os.path.join(output_dir, json_filename)
+
+    # Ensure the filename is unique if the file already exists
+    file_counter = 1
+    while os.path.exists(json_file_path):
+        json_file_path = os.path.join(output_dir, "ffuf_output_{}_{}.json".format(safe_filename, file_counter))
+        file_counter += 1
+
+    ffuf_command = [
+        "ffuf",
+        "-w", wordlist_path,
+        "-u", target_url + "/FUZZ",
+        "-mc", "200",
+        "-o", json_file_path,
+        "-r"
+    ]
+    try:
+        process = subprocess.Popen(ffuf_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            print("Error running ffuf: {}, {}".format(stderr, stdout))
+            return None
+    except Exception as e:
+        print("Subprocess execution failed: {}".format(str(e)))
+        return None
+
+    return json_file_path
+
+def parse_ffuf_output(json_file_path):
+    try:
+        with open(json_file_path, 'r') as file:
+            data = json.load(file)
+    except Exception as e:
+        print("Error reading or parsing ffuf JSON file: {}".format(str(e)))
+        return []
+
+    results = []
+    for result in data.get('results', []):
+        results.append({
+            'description': 'Found: {} at {}'.format(result['input']['FUZZ'], result['url']),
+            'status': 'fail',  # assuming any found item is a fail condition
+            'advice': 'Check the exposure of this directory/file.'
+        })
+    return results
 
 def check_header_compliance(key, finding):
     if key == "HSTS_time":
