@@ -1,166 +1,183 @@
-import sys
+import json
+import subprocess
 import os
+from urlparse import urlparse  # For Python 2.7 compatibility, use urllib.parse in Python 3.x
 
-# Manually specify the path to the modules directory
-script_dir = '/home/kali/Desktop/Hacksclusive/DigiScan'
-modules_dir = os.path.join(script_dir, 'modules')
-sys.path.append(modules_dir)
+def run_testssl(target_url):
+    testssl_script_path = "/home/kali/Desktop/Hacksclusive/testssl.sh/testssl.sh"
+    output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
-from burp import IBurpExtender, ITab
-from java.io import PrintWriter
-from javax.swing import (JButton, JPanel, JTextField, JLabel, JScrollPane, JTextPane, JSplitPane,
-                         BoxLayout, SwingConstants, SwingUtilities, BorderFactory, JCheckBox, JLabel, JTabbedPane)
-from javax.swing.border import EmptyBorder
-from java.awt import BorderLayout, Font, Dimension, FlowLayout
-import time
-from threading import Thread
-import check_uwa05
-import check_upw03
+    parsed_url = urlparse(target_url)
+    safe_filename = parsed_url.netloc.replace(":", "_").replace("/", "_")
+    json_filename = "testssl_output_{}.json".format(safe_filename)
+    json_file_path = os.path.join(output_dir, json_filename)
 
-class BurpExtender(IBurpExtender, ITab):
-    def registerExtenderCallbacks(self, callbacks):
-        print("Loading DigiScan...")
-        self._callbacks = callbacks
-        self._callbacks.setExtensionName('DigiScan')
-        self._helpers = callbacks.getHelpers()
-        self.initUI()
-        callbacks.addSuiteTab(self)
+    # Ensure the filename is unique if the file already exists
+    file_counter = 1
+    while os.path.exists(json_file_path):
+        json_file_path = os.path.join(output_dir, "testssl_output_{}_{}.json".format(safe_filename, file_counter))
+        file_counter += 1
 
-    def initUI(self):
-        self._splitpane = JSplitPane(JSplitPane.VERTICAL_SPLIT)
-        self._splitpane.setBorder(EmptyBorder(10, 10, 10, 10))
+    try:
+        process = subprocess.Popen([testssl_script_path, "-oj", json_file_path, target_url],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            print("Error running testssl.sh: {}, {}".format(stderr, stdout))
+            return None
+    except Exception as e:
+        print("Subprocess execution failed: {}".format(str(e)))
+        return None
 
-        titlePanel = JPanel()
-        titlePanel.setLayout(BoxLayout(titlePanel, BoxLayout.Y_AXIS))
-        titleLabel = JLabel("DigiScan")
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 18.0))
-        creatorLabel = JLabel("by Rutger Harmers")
-        creatorLabel.setFont(creatorLabel.getFont().deriveFont(Font.PLAIN, 14.0))
-        titlePanel.add(titleLabel)
-        titlePanel.add(creatorLabel)
-        titlePanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 15, 0))
+    return json_file_path
 
-        setupPanel = JPanel(BorderLayout(5, 5))
-        inputPanel = JPanel(BorderLayout(10, 0))
-        inputPanel.add(JLabel("Target URL:"), BorderLayout.WEST)
-        self.hostField = JTextField(30)
-        inputPanel.add(self.hostField, BorderLayout.CENTER)
+def filter_keys(json_file_path):
+    required_keys = {
+        "cookie_secure", "cookie_httponly", "HSTS_time", 
+        "X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy",
+        "Content-Security-Policy"  # Ensure CSP is included
+    }
 
-        normsPanel = JPanel(FlowLayout(FlowLayout.LEADING, 5, 5))
-        self.selectAll = JCheckBox("Select All", actionPerformed=self.selectAllNorms)
-        self.checkboxUWA05 = JCheckBox("U/WA.05")
-        self.checkboxUPW03 = JCheckBox("U/PW.03")
-        self.checkboxUPW05 = JCheckBox("U/PW.05")
-        self.checkboxUC09 = JCheckBox("C.09")
-        normsPanel.add(self.selectAll)
-        normsPanel.add(self.checkboxUWA05)
-        normsPanel.add(self.checkboxUPW03)
-        normsPanel.add(self.checkboxUPW05)
-        normsPanel.add(self.checkboxUC09)
+    try:
+        with open(json_file_path, 'r') as file:
+            data = json.load(file)
+    except Exception as e:
+        print("Error reading or parsing JSON file: {}".format(str(e)))
+        return []
 
-        inputAndNormsPanel = JPanel(BorderLayout())
-        inputAndNormsPanel.add(inputPanel, BorderLayout.NORTH)
-        inputAndNormsPanel.add(normsPanel, BorderLayout.CENTER)
+    found_keys = {key: False for key in required_keys}
+    results = []
 
-        self.startButton = JButton('Start Scan', actionPerformed=self.startScan)
-        self.startButton.setPreferredSize(Dimension(120, 30))
-        setupPanel.add(inputAndNormsPanel, BorderLayout.CENTER)
-        setupPanel.add(self.startButton, BorderLayout.EAST)
+    for item in data:
+        key = item['id']
+        if key in required_keys:
+            found_keys[key] = True  # Mark the key as found
+            result = check_header_compliance(key, item['finding'])
+            if result:
+                results.append(result)
 
-        self.statusBar = JLabel("Status: Ready to scan")
-        self.statusBar.setHorizontalAlignment(SwingConstants.LEFT)
+    # Check for any required keys that were not found in the JSON data
+    for key, found in found_keys.items():
+        if not found:
+            results.append({
+                'description': '{} is missing'.format(key),
+                'status': 'fail',
+                'advice': 'Ensure that ' + key + ' is correctly configured and included in the security assessment.'
+            })
 
-        controlPanel = JPanel(BorderLayout())
-        controlPanel.add(titlePanel, BorderLayout.NORTH)
-        controlPanel.add(setupPanel, BorderLayout.CENTER)
-        controlPanel.add(self.statusBar, BorderLayout.SOUTH)
+    # Sort results by status importance
+    results.sort(key=lambda x: {"fail": 0, "warning": 1, "pass": 2}[x['status']])
+    return results
 
-        self._splitpane.setTopComponent(controlPanel)
+def run_ffuf_scan(target_url):
+    wordlist_path = "/home/kali/Desktop/Hacksclusive/DigiScan/resources/wordlist.txt"
+    output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
-        # Initialize the JTabbedPane for displaying results
-        self.resultTabs = JTabbedPane()
-        self._splitpane.setBottomComponent(self.resultTabs)
+    parsed_url = urlparse(target_url)
+    safe_filename = parsed_url.netloc.replace(":", "_").replace("/", "_")
+    json_filename = "ffuf_output_{}.json".format(safe_filename)
+    json_file_path = os.path.join(output_dir, json_filename)
 
+    # Ensure the filename is unique if the file already exists
+    file_counter = 1
+    while os.path.exists(json_file_path):
+        json_file_path = os.path.join(output_dir, "ffuf_output_{}_{}.json".format(safe_filename, file_counter))
+        file_counter += 1
 
-    def selectAllNorms(self, event):
-        is_selected = self.selectAll.isSelected()
-        self.checkboxUWA05.setSelected(is_selected)
-        self.checkboxUPW03.setSelected(is_selected)
-        self.checkboxUPW05.setSelected(is_selected)
-        self.checkboxUC09.setSelected(is_selected)
+    ffuf_command = [
+        "ffuf",
+        "-w", wordlist_path,
+        "-u", target_url + "/FUZZ",
+        "-mc", "200",
+        "-o", json_file_path,
+        "-r"
+    ]
+    try:
+        process = subprocess.Popen(ffuf_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            print("Error running ffuf: {}, {}".format(stderr, stdout))
+            return None
+    except Exception as e:
+        print("Subprocess execution failed: {}".format(str(e)))
+        return None
 
-    def startScan(self, event):
-        host = self.hostField.getText()
-        if not host.strip():
-            self.statusBar.setText("Status: Please enter a valid URL to scan.")
-            return
+    return json_file_path
 
-        norms_to_check = [chk.getText() for chk in [self.checkboxUWA05, self.checkboxUPW03, self.checkboxUPW05, self.checkboxUC09] if chk.isSelected()]
-        if not norms_to_check:
-            self.statusBar.setText("Status: Please select at least one norm to check.")
-            return
+def parse_ffuf_output(json_file_path):
+    try:
+        with open(json_file_path, 'r') as file:
+            data = json.load(file)
+    except Exception as e:
+        print("Error reading or parsing ffuf JSON file: {}".format(str(e)))
+        return []
 
-        self.statusBar.setText("Status: Scanning...")
-        scan_thread = Thread(target=self.runScan, args=(host, norms_to_check))
-        scan_thread.start()
+    results = []
+    for result in data.get('results', []):
+        results.append({
+            'description': 'Found: {} at {}'.format(result['input']['FUZZ'], result['url']),
+            'status': 'fail',  # assuming any found item is a fail condition
+            'advice': 'Check the exposure of this directory/file.'
+        })
+    return results
 
-    def runScan(self, host, norms_to_check):
+def check_header_compliance(key, finding):
+    if key == "HSTS_time":
         try:
-            results = {}
-            json_output_path = None
-
-            if 'U/WA.05' in norms_to_check:
-                json_output_path = check_uwa05.run_testssl(host)
-                if json_output_path:
-                    results['U/WA.05'] = check_uwa05.filter_keys(json_output_path)
-
-            if 'U/PW.03' in norms_to_check:
-                if not json_output_path:
-                    json_output_path = check_upw03.run_testssl(host)
-                if json_output_path:
-                    results['U/PW.03'] = check_upw03.filter_keys(json_output_path)
-                ffuf_output = check_upw03.run_ffuf_scan(host)
-                if ffuf_output:
-                    ffuf_results = check_upw03.parse_ffuf_output(ffuf_output)
-                    if ffuf_results:
-                        results['U/PW.03'].append({"header": "Fuzzing Results"})
-                        results['U/PW.03'].extend(ffuf_results)
-
-            SwingUtilities.invokeLater(lambda: self.updateUI(results))
-        except Exception as e:
-            error_message = "<html><body>An error occurred: {}</body></html>".format(str(e))
-            SwingUtilities.invokeLater(lambda: self.showError(error_message))
-
-    def updateUI(self, results):
-        self.resultTabs.removeAll()  # Clear existing tabs if any
-        for norm, data in results.items():
-            panel = JTextPane()
-            panel.setContentType("text/html")
-            panel.setText(self.formatResults(data))
-            panel.setEditable(False)
-            scrollPane = JScrollPane(panel)
-            self.resultTabs.addTab(norm, scrollPane)
-        self.statusBar.setText("Status: Scanning completed.")
-
-    def formatResults(self, data):
-        html_content = "<html><body>"
-        for result in data:
-            if isinstance(result, dict) and "header" in result:
-                html_content += "<h3 style='margin-bottom: 0px;'>{}</h3>".format(result["header"])
+            hsts_seconds = int(finding.split(" ")[2].strip("()=").split(" ")[0])
+            if hsts_seconds >= 31536000:
+                return {'description': 'HSTS time meets or exceeds the requirement of 31536000 seconds', 'status': 'pass'}
             else:
-                icon = '&#9989;' if result.get('status') == 'pass' else '&#9888;' if result.get('status') == 'warning' else '&#10060;'
-                html_content += "<p style='margin-bottom: 5px;'><span style='color: {}; font-weight: bold;'>{} </span>{}<br><i>Advice: {}<br></i></p>".format(
-                    'green' if result.get('status') == 'pass' else 'orange' if result.get('status') == 'warning' else 'red', 
-                    icon, result.get('description', 'No description provided'), result.get('advice', 'No specific advice available.'))
-        html_content += "</body></html>"
-        return html_content
+                return {'description': 'HSTS time is below the required 31536000 seconds', 'status': 'fail', 'advice': 'Increase HSTS time to at least 31536000 seconds', 'found': finding}
+        except (IndexError, ValueError):
+            return {'description': 'HSTS time format is incorrect or missing', 'status': 'fail', 'advice': 'Check HSTS time format', 'found': finding}
 
-    def showError(self, error_message):
-        self.resultTextPane.setText(error_message)
-        self.statusBar.setText("Status: An error occurred.")
+    if key == "X-Frame-Options":
+        valid_options = ["deny", "sameorigin"]
+        if finding.lower() in valid_options:
+            return {'description': '{} is properly set to {}'.format(key, finding), 'status': 'pass'}
+        else:
+            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "DENY" or "SAMEORIGIN"'.format(key), 'found': finding}
 
-    def getTabCaption(self):
-        return "DigiScan"
+    if key == "X-Content-Type-Options":
+        if finding.lower() == "nosniff":
+            return {'description': '{} is set to nosniff'.format(key), 'status': 'pass'}
+        else:
+            return {'description': '{} is not set to nosniff'.format(key), 'status': 'fail', 'advice': 'Set {} to "nosniff"'.format(key), 'found': finding}
 
-    def getUiComponent(self):
-        return self._splitpane
+    if key == "Referrer-Policy":
+        valid_policies = ["same-origin", "noreferrer"]
+        if finding.lower() in valid_policies:
+            return {'description': '{} is adequately set to {}'.format(key, finding), 'status': 'pass'}
+        else:
+            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "same-origin" or "noreferrer"'.format(key), 'found': finding}
+
+    if key == "Content-Security-Policy":
+        csp_errors = []
+        if "'unsafe-inline'" in finding and "nonce" not in finding:
+            csp_errors.append("Contains 'unsafe-inline' without 'nonce'")
+        if "'unsafe-eval'" in finding:
+            csp_errors.append("Contains 'unsafe-eval'")
+        if "http:" in finding:
+            csp_errors.append("Contains HTTP sources which are insecure")
+
+        required_directives = ["default-src 'self'", "frame-src 'self'", "frame-ancestors 'self'"]
+        for directive in required_directives:
+            if directive not in finding:
+                csp_errors.append("Set: {}".format(directive))
+
+        if csp_errors:
+            return {
+                'description': '{} has issues: {}'.format(key, ', '.join(csp_errors)),
+                'status': 'fail',
+                'advice': 'Adjust CSP to conform to DigiD standards: {}'.format(', '.join(csp_errors)),
+                'found': finding  # Include the actual CSP content found
+            }
+        else:
+            return {'description': '{} is correctly configured according to DigiD standards'.format(key), 'status': 'pass'}
+
+    return None
