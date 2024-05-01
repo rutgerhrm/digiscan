@@ -9,7 +9,7 @@ sys.path.append(modules_dir)
 from burp import IBurpExtender, ITab
 from java.io import PrintWriter
 from javax.swing import (JButton, JPanel, JTextField, JLabel, JScrollPane, JTextPane, JSplitPane,
-                         BoxLayout, SwingConstants, SwingUtilities, BorderFactory, JCheckBox, JLabel)
+                         BoxLayout, SwingConstants, SwingUtilities, BorderFactory, JCheckBox, JLabel, JTabbedPane)
 from javax.swing.border import EmptyBorder
 from java.awt import BorderLayout, Font, Dimension, FlowLayout
 import time
@@ -77,11 +77,10 @@ class BurpExtender(IBurpExtender, ITab):
 
         self._splitpane.setTopComponent(controlPanel)
 
-        self.resultTextPane = JTextPane()
-        self.resultTextPane.setContentType("text/html")
-        self.resultTextPane.setEditable(False)
-        self.resultScrollPane = JScrollPane(self.resultTextPane)
-        self._splitpane.setBottomComponent(self.resultScrollPane)
+        # Initialize the JTabbedPane for displaying results
+        self.resultTabs = JTabbedPane()
+        self._splitpane.setBottomComponent(self.resultTabs)
+
 
     def selectAllNorms(self, event):
         is_selected = self.selectAll.isSelected()
@@ -94,17 +93,14 @@ class BurpExtender(IBurpExtender, ITab):
         host = self.hostField.getText()
         if not host.strip():
             self.statusBar.setText("Status: Please enter a valid URL to scan.")
-            self.resultTextPane.setText("<html><body>Please enter a valid URL to scan.</body></html>")
             return
 
         norms_to_check = [chk.getText() for chk in [self.checkboxUWA05, self.checkboxUPW03, self.checkboxUPW05, self.checkboxUC09] if chk.isSelected()]
         if not norms_to_check:
             self.statusBar.setText("Status: Please select at least one norm to check.")
-            self.resultTextPane.setText("<html><body>Please select at least one norm to check.</body></html>")
             return
 
         self.statusBar.setText("Status: Scanning...")
-        self.resultTextPane.setText("<html><body>Scanning in progress...</body></html>")
         scan_thread = Thread(target=self.runScan, args=(host, norms_to_check))
         scan_thread.start()
 
@@ -118,42 +114,46 @@ class BurpExtender(IBurpExtender, ITab):
                 if json_output_path:
                     results['U/WA.05'] = check_uwa05.filter_keys(json_output_path)
 
-            # Use the same JSON file for U/PW.03 if available, else run the testssl script
             if 'U/PW.03' in norms_to_check:
-                if not json_output_path:  # If U/WA.05 wasn't selected, we need to run the testssl script
+                if not json_output_path:
                     json_output_path = check_upw03.run_testssl(host)
                 if json_output_path:
                     results['U/PW.03'] = check_upw03.filter_keys(json_output_path)
+                ffuf_output = check_upw03.run_ffuf_scan(host)
+                if ffuf_output:
+                    ffuf_results = check_upw03.parse_ffuf_output(ffuf_output)
+                    if ffuf_results:
+                        results['U/PW.03'].append({"header": "Fuzzing Results"})
+                        results['U/PW.03'].extend(ffuf_results)
 
-            # Placeholders for other norm checks
-            # if 'U/PW.05' in norms_to_check:
-            #     results['U/PW.05'] = check_upw05.filter_keys(json_output)
-            # if 'C.09' in norms_to_check:
-            #     results['C.09'] = check_c09.filter_keys(json_output)
-
-            display_html = "<html><body>"
-            for norm, data in results.items():
-                # Reduce the margin-bottom for the title to decrease space between title and results
-                display_html += "<h2 style='margin-bottom: 1px;'>{} Check Results</h2>".format(norm)
-                for result in data:
-                    icon = '&#9989;' if result['status'] == 'pass' else '&#9888;' if result['status'] == 'warning' else '&#10060;'
-                    # Apply margin-bottom to each paragraph to control spacing between results
-                    display_html += "<p style='margin-bottom: 1px;'><span style='color: {}; font-weight: bold;'>{} </span>{}<br><i>Advice: {}<br></i></p>".format(
-                        'green' if result['status'] == 'pass' else 'orange' if result['status'] == 'warning' else 'red', 
-                        icon, result['description'], result.get('advice', 'Please comply with best practices.'))
-                # Add extra margin above the horizontal line for more space before the separator
-                display_html += "<div style='margin-top: 10px;'><hr></div>"
-            display_html += "</body></html>"
-
-            # Update UI in a thread-safe way
-            SwingUtilities.invokeLater(lambda: self.updateUI(display_html))
+            SwingUtilities.invokeLater(lambda: self.updateUI(results))
         except Exception as e:
             error_message = "<html><body>An error occurred: {}</body></html>".format(str(e))
             SwingUtilities.invokeLater(lambda: self.showError(error_message))
 
-    def updateUI(self, display_html):
-        self.resultTextPane.setText(display_html)
+    def updateUI(self, results):
+        self.resultTabs.removeAll()  # Clear existing tabs if any
+        for norm, data in results.items():
+            panel = JTextPane()
+            panel.setContentType("text/html")
+            panel.setText(self.formatResults(data))
+            panel.setEditable(False)
+            scrollPane = JScrollPane(panel)
+            self.resultTabs.addTab(norm, scrollPane)
         self.statusBar.setText("Status: Scanning completed.")
+
+    def formatResults(self, data):
+        html_content = "<html><body>"
+        for result in data:
+            if isinstance(result, dict) and "header" in result:
+                html_content += "<h3 style='margin-bottom: 0px;'>{}</h3>".format(result["header"])
+            else:
+                icon = '&#9989;' if result.get('status') == 'pass' else '&#9888;' if result.get('status') == 'warning' else '&#10060;'
+                html_content += "<p style='margin-bottom: 5px;'><span style='color: {}; font-weight: bold;'>{} </span>{}<br><i>Advice: {}<br></i></p>".format(
+                    'green' if result.get('status') == 'pass' else 'orange' if result.get('status') == 'warning' else 'red', 
+                    icon, result.get('description', 'No description provided'), result.get('advice', 'No specific advice available.'))
+        html_content += "</body></html>"
+        return html_content
 
     def showError(self, error_message):
         self.resultTextPane.setText(error_message)
