@@ -132,30 +132,29 @@ def check_header_compliance(key, finding):
             if hsts_seconds >= 31536000:
                 return {'description': 'HSTS time meets or exceeds the requirement of 31536000 seconds', 'status': 'pass'}
             else:
-                return {'description': 'HSTS time is below the required 31536000 seconds', 'status': 'fail', 'advice': 'Increase HSTS time to at least 31536000 seconds'}
+                return {'description': 'HSTS time is below the required 31536000 seconds', 'status': 'fail', 'advice': 'Increase HSTS time to at least 31536000 seconds', 'found': finding}
         except (IndexError, ValueError):
-            return {'description': 'HSTS time format is incorrect or missing', 'status': 'fail', 'advice': 'Check HSTS time format'}
+            return {'description': 'HSTS time format is incorrect or missing', 'status': 'fail', 'advice': 'Check HSTS time format', 'found': finding}
 
     if key == "X-Frame-Options":
         valid_options = ["deny", "sameorigin"]
         if finding.lower() in valid_options:
             return {'description': '{} is properly set to {}'.format(key, finding), 'status': 'pass'}
         else:
-            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "DENY" or "SAMEORIGIN"'.format(key)}
+            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "DENY" or "SAMEORIGIN"'.format(key), 'found': finding}
 
     if key == "X-Content-Type-Options":
         if finding.lower() == "nosniff":
             return {'description': '{} is set to nosniff'.format(key), 'status': 'pass'}
         else:
-            return {'description': '{} is not set to nosniff'.format(key), 'status': 'fail', 'advice': 'Set {} to "nosniff"'.format(key)}
+            return {'description': '{} is not set to nosniff'.format(key), 'status': 'fail', 'advice': 'Set {} to "nosniff"'.format(key), 'found': finding}
 
     if key == "Referrer-Policy":
         valid_policies = ["same-origin", "noreferrer"]
         if finding.lower() in valid_policies:
             return {'description': '{} is adequately set to {}'.format(key, finding), 'status': 'pass'}
         else:
-            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "same-origin" or "noreferrer"'.format(key)}
-
+            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "same-origin" or "noreferrer"'.format(key), 'found': finding}
 
     if key == "Content-Security-Policy":
         csp_errors = []
@@ -169,12 +168,16 @@ def check_header_compliance(key, finding):
         required_directives = ["default-src 'self'", "frame-src 'self'", "frame-ancestors 'self'"]
         for directive in required_directives:
             if directive not in finding:
-                csp_errors.append("Missing directive: {}".format(directive))
+                csp_errors.append("Set: {}".format(directive))
 
         if csp_errors:
-            return {'description': '{} has issues: {}'.format(key, ', '.join(csp_errors)), 'status': 'fail', 'advice': 'Adjust CSP to conform to DigiD standards: {}'.format(', '.join(csp_errors))}
+            return {
+                'description': '{} has issues: {}'.format(key, ', '.join(csp_errors)),
+                'status': 'fail',
+                'advice': 'Adjust CSP to conform to DigiD standards: {}'.format(', '.join(csp_errors)),
+                'found': finding  # Include the actual CSP content found
+            }
         else:
             return {'description': '{} is correctly configured according to DigiD standards'.format(key), 'status': 'pass'}
-
 
     return None
