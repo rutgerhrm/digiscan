@@ -17,6 +17,7 @@ from threading import Thread
 import check_uwa05
 import check_upw03
 import check_upw05
+import check_c09
 
 class BurpExtender(IBurpExtender, ITab):
     def registerExtenderCallbacks(self, callbacks):
