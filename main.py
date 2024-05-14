@@ -131,7 +131,12 @@ class BurpExtender(IBurpExtender, ITab):
             if 'U/PW.05' in norms_to_check:
                 http_methods_results = check_upw05.run_http_method_checks(host)
                 if http_methods_results:
-                    results['U/PW.05'] = http_methods_results             
+                    results['U/PW.05'] = http_methods_results  
+
+            if 'C.09' in norms_to_check:
+                server_info_results = check_c09.run_server_check(host)
+                if server_info_results:
+                    results['C.09 Server Info'] = server_info_results           
 
             SwingUtilities.invokeLater(lambda: self.updateUI(results))
         except Exception as e:
