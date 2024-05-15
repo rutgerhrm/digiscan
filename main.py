@@ -136,7 +136,12 @@ class BurpExtender(IBurpExtender, ITab):
             if 'C.09' in norms_to_check:
                 server_info_results = check_c09.run_server_check(host)
                 if server_info_results:
-                    results['C.09 Server Info'] = server_info_results           
+                    # Here we add the "Version Detection" header only to the Wappalyzer part of the results
+                    technology_index = next((index for index, result in enumerate(server_info_results) if 'Technology Detected' in result['description']), None)
+                    if technology_index is not None:
+                        # Inserting the header just before the first technology result
+                        server_info_results.insert(technology_index, {"header": "Version Detection"})
+                    results['C.09 Server Info'] = server_info_results    
 
             SwingUtilities.invokeLater(lambda: self.updateUI(results))
         except Exception as e:
