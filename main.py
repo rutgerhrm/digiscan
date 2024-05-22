@@ -1,6 +1,6 @@
 import sys
 import os
-from threading import Thread
+from threading import Thread, Lock
 
 from java.io import PrintWriter
 from javax.swing import JButton, JPanel, JTextField, JLabel, JScrollPane, JTextPane, JSplitPane, \
@@ -74,6 +74,8 @@ class BurpExtender(IBurpExtender, ITab):
 
         self.statusBar = JLabel("Status: Ready to scan")
         self.statusBar.setHorizontalAlignment(SwingConstants.LEFT)
+        self.active_scans = 0
+        self.lock = Lock()
 
         controlPanel = JPanel(BorderLayout())
         controlPanel.add(titlePanel, BorderLayout.NORTH)
@@ -89,12 +91,6 @@ class BurpExtender(IBurpExtender, ITab):
         self.networkScanResults.setContentType("text/html")
         self.networkScanResults.setEditable(False)
         self.networkScrollPane = JScrollPane(self.networkScanResults)
-
-        # Debug: Check if JTextPane is correctly added to the UI
-        if self.networkScanResults.getParent() is None:
-            print("networkScanResults JTextPane is not properly added to the UI.")
-        else:
-            print("networkScanResults JTextPane is properly integrated in the UI.")
 
     def selectAllNorms(self, event):
         is_selected = self.selectAll.isSelected()
@@ -119,6 +115,8 @@ class BurpExtender(IBurpExtender, ITab):
             return
 
         self.statusBar.setText("Status: Scanning...")
+        with self.lock:
+            self.active_scans = len(norms_to_check)
         
         # Start each selected norm in a separate thread
         for norm in norms_to_check:
@@ -133,8 +131,12 @@ class BurpExtender(IBurpExtender, ITab):
             if json_output_path:
                 network_results = check_ports.parse_nmap_json(json_output_path)
                 SwingUtilities.invokeLater(lambda: self.updateUI('Port Scan', network_results))
+            else:
+                SwingUtilities.invokeLater(lambda: self.updateUI('Port Scan', "No results or scan failed."))
         except Exception as e:
             SwingUtilities.invokeLater(lambda: self.showError("Port Scan error: " + str(e)))
+        finally:
+            self.decrementActiveScans()
 
     def runScan(self, host, norms_to_check):
         try:
@@ -179,12 +181,20 @@ class BurpExtender(IBurpExtender, ITab):
 
         except Exception as e:
             SwingUtilities.invokeLater(lambda: self.showError("An error occurred: " + str(e)))
+        finally:
+            self.decrementActiveScans()
 
-    def updateUI(self, norm, data, is_ffuf=False):
+    def decrementActiveScans(self):
+        with self.lock:
+            self.active_scans -= 1
+            if self.active_scans == 0:
+                SwingUtilities.invokeLater(lambda: self.statusBar.setText("Status: Scanning completed"))
+
+    def updateUI(self, norm, data):
         text_pane = None
-
         tab_exists = False
         tab_index = -1
+
         for i in range(self.resultTabs.getTabCount()):
             if self.resultTabs.getTitleAt(i) == norm:
                 tab_exists = True
@@ -198,14 +208,17 @@ class BurpExtender(IBurpExtender, ITab):
         else:
             new_text_pane = JTextPane()
             new_text_pane.setContentType("text/html")
-            new_text_pane.setText(self.formatResults(data, is_ffuf))
             new_text_pane.setEditable(False)
             scrollPane = JScrollPane(new_text_pane)
             self.resultTabs.addTab(norm, scrollPane)
             text_pane = new_text_pane
 
         if text_pane is not None:
-            formatted_data = self.formatResults(data, is_ffuf)
+            if isinstance(data, str):  # Check if data is just a string (e.g., "Scanning...")
+                formatted_data = """<html><body><p style='font-family: Arial;'>{}</p></body></html>""".format(data)
+            else:  # Otherwise, assume it's structured data for results
+                formatted_data = self.formatResults(data)
+
             def update_text_pane():
                 text_pane.setText(formatted_data)
                 text_pane.setCaretPosition(0)
