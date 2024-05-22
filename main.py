@@ -90,6 +90,12 @@ class BurpExtender(IBurpExtender, ITab):
         self.networkScanResults.setEditable(False)
         self.networkScrollPane = JScrollPane(self.networkScanResults)
 
+        # Debug: Check if JTextPane is correctly added to the UI
+        if self.networkScanResults.getParent() is None:
+            print("networkScanResults JTextPane is not properly added to the UI.")
+        else:
+            print("networkScanResults JTextPane is properly integrated in the UI.")
+
     def toggleNetworkScanTab(self, event):
         if self.checkboxNetworkScan.isSelected():
             self.resultTabs.addTab("Network Scan Results", self.networkScrollPane)
@@ -143,12 +149,15 @@ class BurpExtender(IBurpExtender, ITab):
                     results['U/PW.03'] = check_upw03.filter_keys(json_output_path)
                     SwingUtilities.invokeLater(lambda: self.updateUI('U/PW.03', results['U/PW.03']))
 
-                ffuf_output = check_upw03.run_ffuf_scan(host)
+                # Perform and handle FFUF scan
+                ffuf_output = check_upw03.run_ffuf_scan(host)  # Ensure this is defined here
                 if ffuf_output:
                     ffuf_results = check_upw03.parse_ffuf_output(ffuf_output)
                     if ffuf_results:
+                        for result in ffuf_results:
+                            result['type'] = 'ffuf'  # Mark as ffuf result
                         if 'U/PW.03' in results:
-                            results['U/PW.03'].extend(ffuf_results)
+                            results['U/PW.03'].extend(ffuf_results)  # Combine with existing results
                         else:
                             results['U/PW.03'] = ffuf_results
                         SwingUtilities.invokeLater(lambda: self.updateUI('U/PW.03', results['U/PW.03']))
@@ -166,25 +175,28 @@ class BurpExtender(IBurpExtender, ITab):
                     SwingUtilities.invokeLater(lambda: self.updateUI('C.09', results['C.09']))
 
             if 'Network Scan' in norms_to_check:
-                network_thread = Thread(target=self.runNetworkScan, args=(host,))
-                network_thread.start()
+                json_output_path = check_ports.run_network_scan(host)
+                if json_output_path:
+                    network_results = check_ports.parse_nmap_json(json_output_path)
+                    if network_results:
+                        results['Network Scan'] = network_results
+                        SwingUtilities.invokeLater(lambda: self.updateUI('Network Scan', results['Network Scan']))
 
         except Exception as e:
             SwingUtilities.invokeLater(lambda: self.showError("An error occurred: " + str(e)))
 
     def runNetworkScan(self, host):
-        result = check_ports.run_network_scan(host)
-        SwingUtilities.invokeLater(lambda: self.updateNetworkScanResults(result))
+        try:
+            for result in check_ports.run_network_scan(host):
+                if result:
+                    # Ensure that the current result is correctly captured by the lambda
+                    SwingUtilities.invokeLater(lambda r=result: self.updateNetworkScanResults(r))
+        except Exception as e:
+            print("Network scan failed with exception:", e)
+            SwingUtilities.invokeLater(lambda: self.showError("An error occurred in network scanning: " + str(e)))
 
-    def updateNetworkScanResults(self, result):
-        if self.networkScanResults:
-            self.networkScanResults.setText(self.formatResults(result))
-            self.resultTabs.setSelectedComponent(self.networkScrollPane)
-            self.statusBar.setText("Network Scan completed.")
-
-    def updateUI(self, norm, data):
-        if norm == "Network Scan":
-            return
+    def updateUI(self, norm, data, is_ffuf=False):
+        text_pane = None
 
         tab_exists = False
         tab_index = -1
@@ -198,37 +210,62 @@ class BurpExtender(IBurpExtender, ITab):
             panel = self.resultTabs.getComponentAt(tab_index)
             if isinstance(panel, JScrollPane):
                 text_pane = panel.getViewport().getView()
-                if isinstance(text_pane, JTextPane):
-                    text_pane.setText(self.formatResults(data))
         else:
-            panel = JTextPane()
-            panel.setContentType("text/html")
-            panel.setText(self.formatResults(data))
-            panel.setEditable(False)
-            scrollPane = JScrollPane(panel)
+            new_text_pane = JTextPane()
+            new_text_pane.setContentType("text/html")
+            new_text_pane.setText(self.formatResults(data, is_ffuf))
+            new_text_pane.setEditable(False)
+            scrollPane = JScrollPane(new_text_pane)
             self.resultTabs.addTab(norm, scrollPane)
+            text_pane = new_text_pane
+
+        if text_pane is not None:
+            formatted_data = self.formatResults(data, is_ffuf)
+            def update_text_pane():
+                text_pane.setText(formatted_data)
+                text_pane.setCaretPosition(0)
+            SwingUtilities.invokeLater(update_text_pane)
+        else:
+            print("Error: Text pane not found or initialized for norm:", norm)
 
     def updateNetworkScanResults(self, result):
-        if result:  
-            self.networkScanResults.setText(result)
-            self.networkScanResults.revalidate()  
-        else:
-            self.networkScanResults.setText("No results or scan failed.")
-            self.statusBar.setText("Failed to complete network scan.")
+        if result:
+            # Initialize an attribute to accumulate results if it doesn't already exist
+            if not hasattr(self, 'network_scan_accumulator'):
+                self.network_scan_accumulator = ''
 
-    def formatResults(self, data):
-        html_content = "<html><body>"
-        if isinstance(data, list):
+            # Append new result to the accumulator
+            self.network_scan_accumulator += result
+
+            # Check if the accumulated results are enough to update the JTextPane (e.g., update every 100 characters or when a certain condition is met)
+            if len(self.network_scan_accumulator) > 100 or "\n" in result:  # You can adjust the condition based on your specific needs
+                formatted_result = "<html><body><p>{}</p></body></html>".format(self.network_scan_accumulator)
+                self.networkScanResults.setText(formatted_result)
+                self.networkScanResults.revalidate()
+                self.network_scan_accumulator = ''  # Reset accumulator after update
+
+    def formatResults(self, data, is_ffuf=False):
+        html_content = "<html><head><style>body {font-family: Arial, sans-serif;} .pass {color: green;} .warning {color: orange;} .fail {color: red;} .title {font-weight: bold; margin-top: 20px;}</style></head><body>"
+
+        def format_individual_result(result):
+            icon = '&#9888;' if result.get('status') == 'warning' else '&#9989;' if result.get('status') == 'pass' else '&#10060;'
+            span_class = 'warning' if result.get('status') == 'warning' else 'pass' if result.get('status') == 'pass' else 'fail'
+            return "<p><span class='{0}'>{1}</span> {2} <br><i>Advice: {3}</i></p>".format(
+                span_class, icon, result['description'], result.get('advice', 'No specific advice available.'))
+        
+        # Start by adding non-ffuf results
+        if not is_ffuf:
             for result in data:
-                if "header" in result:
-                    html_content += "<h3 style='margin-bottom: 0px;'>{}</h3>".format(result["header"])
-                icon = '&#9989;' if result.get('status') == 'pass' else '&#9888;' if result.get('status') == 'warning' else '&#10060;'
-                additional_info = '<br>Found: {}'.format(result.get('found')) if 'found' in result else ''
-                html_content += "<p style='margin-bottom: 5px;'><span style='color: {}; font-weight: bold;'>{} </span>{}{}<br><i>Advice: {}<br></i></p>".format(
-                    'green' if result.get('status') == 'pass' else 'orange' if result.get('status') == 'warning' else 'red', 
-                    icon, result.get('description', 'No description provided'), additional_info, result.get('advice', 'No specific advice available.'))
-        elif isinstance(data, dict) and "error" in data:
-            html_content += "<p style='color: red;'>{}</p>".format(data["error"])
+                if 'ffuf' not in result.get('type', ''):
+                    html_content += format_individual_result(result)
+        
+        # Add ffuf title and results if present
+        if any('ffuf' in result.get('type', '') for result in data):
+            html_content += "<div class='title'>Fuzzing Results:</div>"
+            for result in data:
+                if 'ffuf' in result.get('type', ''):
+                    html_content += format_individual_result(result)
+        
         html_content += "</body></html>"
         return html_content
 
