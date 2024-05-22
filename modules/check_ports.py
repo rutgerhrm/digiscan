@@ -8,23 +8,20 @@ def run_network_scan(target_url):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # Use urlparse to get the network location part (hostname) of the URL
     parsed_url = urlparse(target_url)
-    target_hostname = parsed_url.hostname  # This strips the protocol and other parts
+    target_hostname = parsed_url.hostname
     safe_filename = target_hostname.replace(":", "_").replace("/", "_")
     xml_filename = "nmap_output_{}.xml".format(safe_filename)
     json_filename = "nmap_output_{}.json".format(safe_filename)
     xml_file_path = os.path.join(output_dir, xml_filename)
     json_file_path = os.path.join(output_dir, json_filename)
 
-    # Ensure unique filenames
     file_counter = 1
     while os.path.exists(xml_file_path) or os.path.exists(json_file_path):
         xml_file_path = os.path.join(output_dir, "nmap_output_{}_{}.xml".format(safe_filename, file_counter))
         json_file_path = os.path.join(output_dir, "nmap_output_{}_{}.json".format(safe_filename, file_counter))
         file_counter += 1
 
-    # Run nmap scan with XML output
     nmap_command = ["nmap", "-p", "80", target_hostname, "-oX", xml_file_path]
     try:
         process = subprocess.Popen(nmap_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -36,7 +33,6 @@ def run_network_scan(target_url):
         print("Subprocess execution failed: {}".format(str(e)))
         return None
 
-    # Convert XML to JSON using nmap-formatter
     formatter_command = ["nmap-formatter", "json", xml_file_path]
     try:
         process = subprocess.Popen(formatter_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -45,6 +41,7 @@ def run_network_scan(target_url):
             with open(json_file_path, 'w') as f:
                 f.write(stdout)
             print("JSON output:", stdout)  # Print JSON to BurpSuite console
+            os.remove(xml_file_path)  # Delete the XML file after successful conversion
         else:
             print("Error converting XML to JSON: {}, {}".format(stderr, stdout))
             return None
