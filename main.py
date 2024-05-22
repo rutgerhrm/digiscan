@@ -18,7 +18,7 @@ import check_uwa05
 import check_upw03
 import check_upw05
 import check_c09
-import check_ports  # Assuming you'll create this module for network scans
+import check_ports  
 
 class BurpExtender(IBurpExtender, ITab):
     def registerExtenderCallbacks(self, callbacks):
@@ -55,7 +55,7 @@ class BurpExtender(IBurpExtender, ITab):
         self.checkboxUPW03 = JCheckBox("U/PW.03")
         self.checkboxUPW05 = JCheckBox("U/PW.05")
         self.checkboxUC09 = JCheckBox("C.09")
-        self.checkboxNetworkScan = JCheckBox("Network Scan")
+        self.checkboxNetworkScan = JCheckBox("Port Scan")
         normsPanel.add(self.selectAll)
         normsPanel.add(self.checkboxUWA05)
         normsPanel.add(self.checkboxUPW03)
@@ -96,12 +96,6 @@ class BurpExtender(IBurpExtender, ITab):
         else:
             print("networkScanResults JTextPane is properly integrated in the UI.")
 
-    def toggleNetworkScanTab(self, event):
-        if self.checkboxNetworkScan.isSelected():
-            self.resultTabs.addTab("Network Scan Results", self.networkScrollPane)
-        else:
-            self.resultTabs.remove(self.networkScrollPane)
-
     def selectAllNorms(self, event):
         is_selected = self.selectAll.isSelected()
         self.checkboxUWA05.setSelected(is_selected)
@@ -109,7 +103,6 @@ class BurpExtender(IBurpExtender, ITab):
         self.checkboxUPW05.setSelected(is_selected)
         self.checkboxUC09.setSelected(is_selected)
         self.checkboxNetworkScan.setSelected(is_selected)
-        self.toggleNetworkScanTab(None)
 
     def startScan(self, event):
         host = self.hostField.getText().strip()
@@ -126,12 +119,22 @@ class BurpExtender(IBurpExtender, ITab):
             return
 
         self.statusBar.setText("Status: Scanning...")
-        scan_thread = Thread(target=self.runScan, args=(host, norms_to_check))
-        scan_thread.start()
+        
+        # Start each selected norm in a separate thread
+        for norm in norms_to_check:
+            if norm == "Port Scan":
+                Thread(target=self.runPortScan, args=(host,)).start()
+            else:
+                Thread(target=self.runScan, args=(host, [norm])).start()
 
-        # Add the network scan tab only if selected and start scanning
-        if self.checkboxNetworkScan.isSelected():
-            self.resultTabs.addTab("Port Scan", self.networkScrollPane)
+    def runPortScan(self, host):
+        try:
+            json_output_path = check_ports.run_network_scan(host)
+            if json_output_path:
+                network_results = check_ports.parse_nmap_json(json_output_path)
+                SwingUtilities.invokeLater(lambda: self.updateUI('Port Scan', network_results))
+        except Exception as e:
+            SwingUtilities.invokeLater(lambda: self.showError("Port Scan error: " + str(e)))
 
     def runScan(self, host, norms_to_check):
         try:
@@ -174,26 +177,8 @@ class BurpExtender(IBurpExtender, ITab):
                     results['C.09'] = server_info_results
                     SwingUtilities.invokeLater(lambda: self.updateUI('C.09', results['C.09']))
 
-            if 'Network Scan' in norms_to_check:
-                json_output_path = check_ports.run_network_scan(host)
-                if json_output_path:
-                    network_results = check_ports.parse_nmap_json(json_output_path)
-                    if network_results:
-                        results['Network Scan'] = network_results
-                        SwingUtilities.invokeLater(lambda: self.updateUI('Network Scan', results['Network Scan']))
-
         except Exception as e:
             SwingUtilities.invokeLater(lambda: self.showError("An error occurred: " + str(e)))
-
-    def runNetworkScan(self, host):
-        try:
-            for result in check_ports.run_network_scan(host):
-                if result:
-                    # Ensure that the current result is correctly captured by the lambda
-                    SwingUtilities.invokeLater(lambda r=result: self.updateNetworkScanResults(r))
-        except Exception as e:
-            print("Network scan failed with exception:", e)
-            SwingUtilities.invokeLater(lambda: self.showError("An error occurred in network scanning: " + str(e)))
 
     def updateUI(self, norm, data, is_ffuf=False):
         text_pane = None
@@ -227,22 +212,6 @@ class BurpExtender(IBurpExtender, ITab):
             SwingUtilities.invokeLater(update_text_pane)
         else:
             print("Error: Text pane not found or initialized for norm:", norm)
-
-    def updateNetworkScanResults(self, result):
-        if result:
-            # Initialize an attribute to accumulate results if it doesn't already exist
-            if not hasattr(self, 'network_scan_accumulator'):
-                self.network_scan_accumulator = ''
-
-            # Append new result to the accumulator
-            self.network_scan_accumulator += result
-
-            # Check if the accumulated results are enough to update the JTextPane (e.g., update every 100 characters or when a certain condition is met)
-            if len(self.network_scan_accumulator) > 100 or "\n" in result:  # You can adjust the condition based on your specific needs
-                formatted_result = "<html><body><p>{}</p></body></html>".format(self.network_scan_accumulator)
-                self.networkScanResults.setText(formatted_result)
-                self.networkScanResults.revalidate()
-                self.network_scan_accumulator = ''  # Reset accumulator after update
 
     def formatResults(self, data, is_ffuf=False):
         html_content = "<html><head><style>body {font-family: Arial, sans-serif;} .pass {color: green;} .warning {color: orange;} .fail {color: red;} .title {font-weight: bold; margin-top: 20px;}</style></head><body>"
