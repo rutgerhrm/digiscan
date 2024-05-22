@@ -22,7 +22,7 @@ def run_network_scan(target_url):
         json_file_path = os.path.join(output_dir, "nmap_output_{}_{}.json".format(safe_filename, file_counter))
         file_counter += 1
 
-    nmap_command = ["nmap", "-p", "80", target_hostname, "-oX", xml_file_path]
+    nmap_command = ["nmap", "-p", "80", "-sV", target_hostname, "-oX", xml_file_path]
     try:
         process = subprocess.Popen(nmap_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         stdout, stderr = process.communicate()
@@ -54,23 +54,56 @@ def parse_nmap_json(json_file_path):
     try:
         with open(json_file_path, 'r') as file:
             data = json.load(file)
+        
+        print("Parsed JSON data: {}".format(data))
+
         results = []
-        hosts = data.get("Host", [])
+        hosts = data.get("Host")
+
+        if not hosts:
+            print("No hosts found in the JSON data.")
+            return results
+
+        if not isinstance(hosts, list):
+            raise ValueError("Unexpected JSON structure for 'Host'")
+
         for host in hosts:
             ports = host.get("Port", [])
+
+            if not ports:
+                print("No 'Port' key found for host: {}".format(host))
+                continue
+            
+            if not isinstance(ports, list):
+                raise ValueError("Unexpected JSON structure for 'Port'")
+            
             for port in ports:
                 if port.get("State", {}).get("State") == "open":
                     port_id = port.get("PortID")
-                    service_name = port.get("Service", {}).get("Name", "unknown service")
+                    service_info = port.get("Service", {})
+                    service_name = service_info.get("Name", "unknown service")
+                    service_product = service_info.get("Product", "")
+                    service_version = service_info.get("Version", "")
+                    service_extrainfo = service_info.get("ExtraInfo", "")
+
+                    description = f"Open port {port_id} ({service_name}) detected."
+                    if service_product:
+                        description += f" Product: {service_product}"
+                    if service_version:
+                        description += f" Version: {service_version}"
+                    if service_extrainfo:
+                        description += f" Extra Info: {service_extrainfo}"
+                    
                     result = {
-                        "header": "Port {}".format(port_id),
-                        "description": "Open port {} ({}) detected.".format(port_id, service_name),
+                        "header": f"Port {port_id}",
+                        "description": description,
                         "status": "warning",
                         "advice": "Consider reviewing the necessity of this service being exposed."
                     }
                     results.append(result)
+
+        print("Results: {}".format(results))
         return results
     except Exception as e:
         print("Error parsing JSON output: {}".format(e))
         return []
-
