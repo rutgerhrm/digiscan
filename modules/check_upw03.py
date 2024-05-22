@@ -1,7 +1,7 @@
 import json
 import subprocess
 import os
-from urlparse import urlparse  # For Python 2.7 compatibility, use urllib.parse in Python 3.x
+from urlparse import urlparse
 
 def run_testssl(target_url):
     testssl_script_path = "/home/kali/Desktop/Hacksclusive/testssl.sh/testssl.sh"
