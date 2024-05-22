@@ -40,8 +40,7 @@ def run_network_scan(target_url):
         if process.returncode == 0:
             with open(json_file_path, 'w') as f:
                 f.write(stdout)
-            print("JSON output:", stdout)  # Print JSON to BurpSuite console
-            os.remove(xml_file_path)  # Delete the XML file after successful conversion
+            os.remove(xml_file_path)  
         else:
             print("Error converting XML to JSON: {}, {}".format(stderr, stdout))
             return None
