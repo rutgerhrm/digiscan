@@ -126,6 +126,8 @@ class BurpExtender(IBurpExtender, ITab):
                 Thread(target=self.runScan, args=(host, [norm])).start()
 
     def runPortScan(self, host):
+        SwingUtilities.invokeLater(lambda: self.updateUI('Port Scan', "Scanning in progress..."))
+
         try:
             json_output_path = check_ports.run_network_scan(host)
             if json_output_path:
@@ -187,6 +189,7 @@ class BurpExtender(IBurpExtender, ITab):
     def decrementActiveScans(self):
         with self.lock:
             self.active_scans -= 1
+            print("Active scans remaining: {}".format(self.active_scans))  # Debugging statement    
             if self.active_scans == 0:
                 SwingUtilities.invokeLater(lambda: self.statusBar.setText("Status: Scanning completed"))
 
@@ -217,7 +220,10 @@ class BurpExtender(IBurpExtender, ITab):
             if isinstance(data, str):  # Check if data is just a string (e.g., "Scanning...")
                 formatted_data = """<html><body><p style='font-family: Arial;'>{}</p></body></html>""".format(data)
             else:  # Otherwise, assume it's structured data for results
-                formatted_data = self.formatResults(data)
+                if not data:  # Handle empty data case
+                    formatted_data = """<html><body><p style='font-family: Arial;'>Host was not found.</p></body></html>"""
+                else:
+                    formatted_data = self.formatResults(data)
 
             def update_text_pane():
                 text_pane.setText(formatted_data)
