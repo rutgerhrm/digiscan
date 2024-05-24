@@ -2,9 +2,9 @@ import json
 import subprocess
 import os
 import re
-from urlparse import urlparse  # Ensure compatibility with Python 2.7
+from urlparse import urlparse 
 
-def run_testssl(target_url):
+def run_testssl(target_url, lock):
     testssl_script_path = "/home/kali/Desktop/Hacksclusive/testssl.sh/testssl.sh"
     output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
     if not os.path.exists(output_dir):
@@ -15,13 +15,15 @@ def run_testssl(target_url):
     json_filename = "testssl_output_{}.json".format(safe_filename)
     json_file_path = os.path.join(output_dir, json_filename)
 
-    # Ensure the filename is unique if the file already exists
-    file_counter = 1
-    while os.path.exists(json_file_path):
-        json_file_path = os.path.join(output_dir, "testssl_output_{}_{}.json".format(safe_filename, file_counter))
-        file_counter += 1
-
+    # Use lock to synchronize file access
+    lock.acquire()
     try:
+        # Ensure the filename is unique if the file already exists
+        file_counter = 1
+        while os.path.exists(json_file_path):
+            json_file_path = os.path.join(output_dir, "testssl_output_{}_{}.json".format(safe_filename, file_counter))
+            file_counter += 1
+
         process = subprocess.Popen([testssl_script_path, "-oj", json_file_path, target_url],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         stdout, stderr = process.communicate()
@@ -32,6 +34,8 @@ def run_testssl(target_url):
     except Exception as e:
         print("Subprocess execution failed: {}".format(str(e)))
         return None
+    finally:
+        lock.release() 
 
     return json_file_path
 
