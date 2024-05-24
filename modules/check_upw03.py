@@ -1,9 +1,9 @@
 import json
 import subprocess
 import os
-from urlparse import urlparse
+from urlparse import urlparse  # For Python 2.7 compatibility, use urllib.parse in Python 3.x
 
-def run_testssl(target_url):
+def run_testssl(target_url, lock):
     testssl_script_path = "/home/kali/Desktop/Hacksclusive/testssl.sh/testssl.sh"
     output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
     if not os.path.exists(output_dir):
@@ -14,22 +14,26 @@ def run_testssl(target_url):
     json_filename = "testssl_output_{}.json".format(safe_filename)
     json_file_path = os.path.join(output_dir, json_filename)
 
-    # Ensure the filename is unique if the file already exists
-    file_counter = 1
-    while os.path.exists(json_file_path):
-        json_file_path = os.path.join(output_dir, "testssl_output_{}_{}.json".format(safe_filename, file_counter))
-        file_counter += 1
-
+    lock.acquire()
     try:
+        # Ensure the filename is unique if the file already exists
+        file_counter = 1
+        while os.path.exists(json_file_path):
+            json_file_path = os.path.join(output_dir, "testssl_output_{}_{}.json".format(safe_filename, file_counter))
+            file_counter += 1
+
         process = subprocess.Popen([testssl_script_path, "-oj", json_file_path, target_url],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         stdout, stderr = process.communicate()
+
         if process.returncode != 0:
             print("Error running testssl.sh: {}, {}".format(stderr, stdout))
             return None
     except Exception as e:
         print("Subprocess execution failed: {}".format(str(e)))
         return None
+    finally:
+        lock.release()  # Ensure that the lock is always released
 
     return json_file_path
 
@@ -126,58 +130,86 @@ def parse_ffuf_output(json_file_path):
     return results
 
 def check_header_compliance(key, finding):
+    csp_errors = []
+
     if key == "HSTS_time":
         try:
             hsts_seconds = int(finding.split(" ")[2].strip("()=").split(" ")[0])
             if hsts_seconds >= 31536000:
                 return {'description': 'HSTS time meets or exceeds the requirement of 31536000 seconds', 'status': 'pass'}
             else:
-                return {'description': 'HSTS time is below the required 31536000 seconds', 'status': 'fail', 'advice': 'Increase HSTS time to at least 31536000 seconds', 'found': finding}
+                return {'description': 'HSTS time is below the required 31536000 seconds', 'status': 'fail', 'advice': 'Increase HSTS time to at least 31536000 seconds'}
         except (IndexError, ValueError):
-            return {'description': 'HSTS time format is incorrect or missing', 'status': 'fail', 'advice': 'Check HSTS time format', 'found': finding}
+            return {'description': 'HSTS time format is incorrect or missing', 'status': 'fail', 'advice': 'Check HSTS time format'}
 
     if key == "X-Frame-Options":
         valid_options = ["deny", "sameorigin"]
         if finding.lower() in valid_options:
             return {'description': '{} is properly set to {}'.format(key, finding), 'status': 'pass'}
         else:
-            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "DENY" or "SAMEORIGIN"'.format(key), 'found': finding}
+            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "DENY" or "SAMEORIGIN"'}
 
     if key == "X-Content-Type-Options":
         if finding.lower() == "nosniff":
             return {'description': '{} is set to nosniff'.format(key), 'status': 'pass'}
         else:
-            return {'description': '{} is not set to nosniff'.format(key), 'status': 'fail', 'advice': 'Set {} to "nosniff"'.format(key), 'found': finding}
+            return {'description': '{} is not set to nosniff'.format(key), 'status': 'fail', 'advice': 'Set {} to "nosniff"'}
 
     if key == "Referrer-Policy":
         valid_policies = ["same-origin", "noreferrer"]
         if finding.lower() in valid_policies:
             return {'description': '{} is adequately set to {}'.format(key, finding), 'status': 'pass'}
         else:
-            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "same-origin" or "noreferrer"'.format(key), 'found': finding}
+            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "same-origin" or "noreferrer"'}
 
     if key == "Content-Security-Policy":
-        csp_errors = []
+        required_directives = {
+            "default-src": "'self'",
+            "frame-src": "'self'",
+            "frame-ancestors": "'self'"
+        }
+
+        csp_policies = {}
+        for directive in finding.split(";"):
+            if directive.strip():
+                parts = directive.strip().split(" ")
+                directive_name = parts[0].strip()
+                sources = " ".join(parts[1:]).strip()
+                csp_policies[directive_name] = sources
+
+        # Check each required directive
+        for directive, expected_value in required_directives.items():
+            actual_value = csp_policies.get(directive, 'none')
+            if actual_value != expected_value:
+                csp_errors.append("Expected {directive} {expected}, found {actual}".format(directive=directive, expected=expected_value, actual=actual_value))
+
+        advice_list = []
+
+        # Additional checks for unsafe practices
         if "'unsafe-inline'" in finding and "nonce" not in finding:
             csp_errors.append("Contains 'unsafe-inline' without 'nonce'")
+            advice_list.append("no 'unsafe-inline' unless 'nonce' present")
         if "'unsafe-eval'" in finding:
             csp_errors.append("Contains 'unsafe-eval'")
+            advice_list.append("no 'unsafe-eval'")
         if "http:" in finding:
             csp_errors.append("Contains HTTP sources which are insecure")
+            advice_list.append("no http-sources (https only)")
 
-        required_directives = ["default-src 'self'", "frame-src 'self'", "frame-ancestors 'self'"]
-        for directive in required_directives:
-            if directive not in finding:
-                csp_errors.append("Set: {}".format(directive))
+        # Check and add advice for required directives
+        for directive, expected_value in required_directives.items():
+            actual_value = csp_policies.get(directive)
+            if actual_value != expected_value:
+                advice_list.append("Set {} to {}".format(directive, expected_value))
 
         if csp_errors:
             return {
-                'description': '{} has issues: {}'.format(key, ', '.join(csp_errors)),
+                'description': "{} has issues: {}".format(key, ', '.join(csp_errors)),
                 'status': 'fail',
-                'advice': 'Adjust CSP to conform to DigiD standards: {}'.format(', '.join(csp_errors)),
-                'found': finding  # Include the actual CSP content found
+                'advice': 'Adjust CSP to conform to DigiD standards: ' + ', '.join(advice_list),
             }
         else:
-            return {'description': '{} is correctly configured according to DigiD standards'.format(key), 'status': 'pass'}
+            return {'description': "{} is correctly configured according to DigiD standards".format(key), 'status': 'pass'}
 
-    return None
+    return {'description': 'No specific checks implemented for this header', 'status': 'info'}
+
