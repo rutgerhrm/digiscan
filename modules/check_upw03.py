@@ -147,20 +147,20 @@ def check_header_compliance(key, finding):
         if finding.lower() in valid_options:
             return {'description': '{} is properly set to {}'.format(key, finding), 'status': 'pass'}
         else:
-            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "DENY" or "SAMEORIGIN"'}
+            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "DENY" or "SAMEORIGIN"'.format(key)}
 
     if key == "X-Content-Type-Options":
         if finding.lower() == "nosniff":
             return {'description': '{} is set to nosniff'.format(key), 'status': 'pass'}
         else:
-            return {'description': '{} is not set to nosniff'.format(key), 'status': 'fail', 'advice': 'Set {} to "nosniff"'}
+            return {'description': '{} is not set to nosniff'.format(key), 'status': 'fail', 'advice': 'Set {} to "nosniff"'.format(key)}
 
     if key == "Referrer-Policy":
         valid_policies = ["same-origin", "noreferrer"]
         if finding.lower() in valid_policies:
             return {'description': '{} is adequately set to {}'.format(key, finding), 'status': 'pass'}
         else:
-            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "same-origin" or "noreferrer"'}
+            return {'description': '{} setting is not optimal'.format(key), 'status': 'fail', 'advice': 'Set {} to either "same-origin" or "noreferrer"'.format(key)}
 
     if key == "Content-Security-Policy":
         required_directives = {
