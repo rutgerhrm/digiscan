@@ -14,11 +14,7 @@ modules_dir = os.path.join(script_dir, 'modules')
 sys.path.append(modules_dir)
 
 from burp import IBurpExtender, ITab
-import check_uwa05
-import check_upw03
-import check_upw05
-import check_c09
-import check_ports  
+import check_uwa05, check_upw03, check_upw05, check_c09, check_ports  
 
 class BurpExtender(IBurpExtender, ITab):
     def registerExtenderCallbacks(self, callbacks):
@@ -117,7 +113,10 @@ class BurpExtender(IBurpExtender, ITab):
         self.statusBar.setText("Status: Scanning...")
         with self.lock:
             self.active_scans = len(norms_to_check)
-        
+
+        # Reset the flag
+        self.ui_updated = False
+
         # Start each selected norm in a separate thread
         for norm in norms_to_check:
             if norm == "Port Scan":
@@ -126,16 +125,36 @@ class BurpExtender(IBurpExtender, ITab):
                 Thread(target=self.runScan, args=(host, [norm])).start()
 
     def runPortScan(self, host):
-        SwingUtilities.invokeLater(lambda: self.updateUI('Port Scan', "Scanning in progress..."))
+        # Initial UI update to indicate scanning in progress
+        SwingUtilities.invokeLater(lambda: self.updateUI('Port Scan', "Port scanning in progress..."))
 
         try:
-            json_output_path = check_ports.run_network_scan(host)
-            if json_output_path:
-                network_results = check_ports.parse_nmap_json(json_output_path)
-                SwingUtilities.invokeLater(lambda: self.updateUI('Port Scan', network_results))
+            print("Starting port scan for host:", host)
+            tcp_json_output_path, udp_json_output_path = check_ports.run_network_scan(host)
+
+            tcp_results = check_ports.parse_nmap_json(tcp_json_output_path, "TCP") if tcp_json_output_path else []
+            udp_results = check_ports.parse_nmap_json(udp_json_output_path, "UDP") if udp_json_output_path else []
+
+            # Prepare results directly here to reduce function calls
+            combined_results = [{'header': 'TCP Scan Results', 'type': 'title'}]
+            if tcp_results:
+                combined_results.extend(tcp_results)
             else:
-                SwingUtilities.invokeLater(lambda: self.updateUI('Port Scan', "No results or scan failed."))
+                combined_results.append({'description': 'No open TCP ports found.', 'status': 'info', 'advice': ''})
+
+            combined_results.append({'header': 'UDP Scan Results', 'type': 'title'})
+            if udp_results:
+                combined_results.extend(udp_results)
+            else:
+                combined_results.append({'description': 'No open UDP ports found.', 'status': 'info', 'advice': ''})
+
+            print("Combined Results after adding:", combined_results)
+
+            # Single point for updating UI with final results
+            SwingUtilities.invokeLater(lambda: self.updateUI('Port Scan', combined_results))
+
         except Exception as e:
+            print("Exception during port scan: {}".format(str(e)))
             SwingUtilities.invokeLater(lambda: self.showError("Port Scan error: " + str(e)))
         finally:
             self.decrementActiveScans()
@@ -145,13 +164,13 @@ class BurpExtender(IBurpExtender, ITab):
             results = {}
 
             if 'U/WA.05' in norms_to_check:
-                json_output_path = check_uwa05.run_testssl(host)
+                json_output_path = check_uwa05.run_testssl(host, self.lock)  # Pass the lock
                 if json_output_path:
                     results['U/WA.05'] = check_uwa05.filter_keys(json_output_path)
                     SwingUtilities.invokeLater(lambda: self.updateUI('U/WA.05', results['U/WA.05']))
 
             if 'U/PW.03' in norms_to_check:
-                json_output_path = check_upw03.run_testssl(host)
+                json_output_path = check_upw03.run_testssl(host, self.lock)  # Pass the lock
                 if json_output_path:
                     results['U/PW.03'] = check_upw03.filter_keys(json_output_path)
                     SwingUtilities.invokeLater(lambda: self.updateUI('U/PW.03', results['U/PW.03']))
@@ -189,73 +208,67 @@ class BurpExtender(IBurpExtender, ITab):
     def decrementActiveScans(self):
         with self.lock:
             self.active_scans -= 1
-            print("Active scans remaining: {}".format(self.active_scans))  # Debugging statement    
             if self.active_scans == 0:
                 SwingUtilities.invokeLater(lambda: self.statusBar.setText("Status: Scanning completed"))
 
     def updateUI(self, norm, data):
         text_pane = None
-        tab_exists = False
-        tab_index = -1
+        # Find if the tab for this norm already exists
+        tab_index = next((i for i in range(self.resultTabs.getTabCount()) if self.resultTabs.getTitleAt(i) == norm), -1)
 
-        for i in range(self.resultTabs.getTabCount()):
-            if self.resultTabs.getTitleAt(i) == norm:
-                tab_exists = True
-                tab_index = i
-                break
-
-        if tab_exists and tab_index != -1:
+        if tab_index != -1:
+            # Tab exists, get its content
             panel = self.resultTabs.getComponentAt(tab_index)
             if isinstance(panel, JScrollPane):
                 text_pane = panel.getViewport().getView()
         else:
-            new_text_pane = JTextPane()
-            new_text_pane.setContentType("text/html")
-            new_text_pane.setEditable(False)
-            scrollPane = JScrollPane(new_text_pane)
+            # Create new tab for this norm
+            text_pane = JTextPane()
+            text_pane.setContentType("text/html")
+            text_pane.setEditable(False)
+            scrollPane = JScrollPane(text_pane)
             self.resultTabs.addTab(norm, scrollPane)
-            text_pane = new_text_pane
 
         if text_pane is not None:
-            if isinstance(data, str):  # Check if data is just a string (e.g., "Scanning...")
-                formatted_data = """<html><body><p style='font-family: Arial;'>{}</p></body></html>""".format(data)
-            else:  # Otherwise, assume it's structured data for results
-                if not data:  # Handle empty data case
-                    formatted_data = """<html><body><p style='font-family: Arial;'>Host was not found.</p></body></html>"""
-                else:
-                    formatted_data = self.formatResults(data)
+            # Check if data is a string or results list
+            if isinstance(data, str):
+                formatted_data = "<html><body><p style='font-family: Arial;'>{}</p></body></html>".format(data)
+            else:
+                formatted_data = self.formatResults(data)
 
             def update_text_pane():
-                text_pane.setText(formatted_data)
+                text_pane.setText(formatted_data)  # Set the new content
                 text_pane.setCaretPosition(0)
-            SwingUtilities.invokeLater(update_text_pane)
-        else:
-            print("Error: Text pane not found or initialized for norm:", norm)
 
-    def formatResults(self, data, is_ffuf=False):
+            SwingUtilities.invokeLater(update_text_pane)
+
+    def formatResults(self, data):
         html_content = "<html><head><style>body {font-family: Arial, sans-serif;} .pass {color: green;} .warning {color: orange;} .fail {color: red;} .title {font-weight: bold; margin-top: 20px;}</style></head><body>"
 
         def format_individual_result(result):
+            if result.get('type') == 'title':
+                return "<div class='title'>{0}</div>".format(result['header'])
+            
             icon = '&#9888;' if result.get('status') == 'warning' else '&#9989;' if result.get('status') == 'pass' else '&#10060;'
             span_class = 'warning' if result.get('status') == 'warning' else 'pass' if result.get('status') == 'pass' else 'fail'
             return "<p><span class='{0}'>{1}</span> {2} <br><i>Advice: {3}</i></p>".format(
-                span_class, icon, result['description'], result.get('advice', 'No specific advice available.'))
-        
-        # Start by adding non-ffuf results
-        if not is_ffuf:
-            for result in data:
-                if 'ffuf' not in result.get('type', ''):
-                    html_content += format_individual_result(result)
-        
-        # Add ffuf title and results if present
-        if any('ffuf' in result.get('type', '') for result in data):
+                span_class, icon, result.get('description', 'No description available.'), result.get('advice', 'No specific advice available.'))
+
+        # Process non-ffuf results
+        non_ffuf_results = [r for r in data if 'ffuf' not in r.get('type', '')]
+        for result in non_ffuf_results:
+            html_content += format_individual_result(result)
+
+        # Check and add ffuf results
+        ffuf_results = [r for r in data if 'ffuf' in r.get('type', '')]
+        if ffuf_results:
             html_content += "<div class='title'>Fuzzing Results:</div>"
-            for result in data:
-                if 'ffuf' in result.get('type', ''):
-                    html_content += format_individual_result(result)
+            for result in ffuf_results:
+                html_content += format_individual_result(result)
         
         html_content += "</body></html>"
         return html_content
+
 
     def showError(self, error_message):
         import traceback
