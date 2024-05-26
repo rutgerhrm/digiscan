@@ -4,24 +4,19 @@ import os
 import re
 from urlparse import urlparse 
 
-def run_testssl(target_url, lock):
+def run_testssl(target_url, lock, json_file_path):
     testssl_script_path = "/home/kali/Desktop/Hacksclusive/testssl.sh/testssl.sh"
-    output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
+    output_dir = os.path.dirname(json_file_path)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    parsed_url = urlparse(target_url)
-    safe_filename = parsed_url.netloc.replace(":", "_").replace("/", "_")
-    json_filename = "testssl_output_{}.json".format(safe_filename)
-    json_file_path = os.path.join(output_dir, json_filename)
-
-    # Use lock to synchronize file access
     lock.acquire()
     try:
         # Ensure the filename is unique if the file already exists
         file_counter = 1
         while os.path.exists(json_file_path):
-            json_file_path = os.path.join(output_dir, "testssl_output_{}_{}.json".format(safe_filename, file_counter))
+            json_file_path = os.path.join(output_dir, "testssl_output_{}_{}.json".format(
+                urlparse(target_url).netloc.replace(":", "_").replace("/", "_"), file_counter))
             file_counter += 1
 
         process = subprocess.Popen([testssl_script_path, "-oj", json_file_path, target_url],
@@ -35,7 +30,7 @@ def run_testssl(target_url, lock):
         print("Subprocess execution failed: {}".format(str(e)))
         return None
     finally:
-        lock.release() 
+        lock.release()  # Ensure that the lock is always released
 
     return json_file_path
 
