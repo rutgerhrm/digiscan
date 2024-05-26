@@ -61,9 +61,10 @@ def filter_keys(json_file_path):
     # Check for any required keys that were not found in the JSON data
     for key, found in found_keys.items():
         if not found:
+            status = 'warning' if key in ["cookie_secure", "cookie_httponly"] else 'fail'
             results.append({
                 'description': '{} is missing'.format(key),
-                'status': 'fail',
+                'status': status,
                 'advice': 'Ensure that ' + key + ' is correctly configured and included in the security assessment.'
             })
 
