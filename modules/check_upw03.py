@@ -3,23 +3,19 @@ import subprocess
 import os
 from urlparse import urlparse  # For Python 2.7 compatibility, use urllib.parse in Python 3.x
 
-def run_testssl(target_url, lock):
+def run_testssl(target_url, lock, json_file_path):
     testssl_script_path = "/home/kali/Desktop/Hacksclusive/testssl.sh/testssl.sh"
-    output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
+    output_dir = os.path.dirname(json_file_path)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-
-    parsed_url = urlparse(target_url)
-    safe_filename = parsed_url.netloc.replace(":", "_").replace("/", "_")
-    json_filename = "testssl_output_{}.json".format(safe_filename)
-    json_file_path = os.path.join(output_dir, json_filename)
 
     lock.acquire()
     try:
         # Ensure the filename is unique if the file already exists
         file_counter = 1
         while os.path.exists(json_file_path):
-            json_file_path = os.path.join(output_dir, "testssl_output_{}_{}.json".format(safe_filename, file_counter))
+            json_file_path = os.path.join(output_dir, "testssl_output_{}_{}.json".format(
+                urlparse(target_url).netloc.replace(":", "_").replace("/", "_"), file_counter))
             file_counter += 1
 
         process = subprocess.Popen([testssl_script_path, "-oj", json_file_path, target_url],
@@ -76,6 +72,7 @@ def filter_keys(json_file_path):
     return results
 
 def run_ffuf_scan(target_url):
+    ffuf_path = "/usr/local/bin/ffuf" 
     wordlist_path = "/home/kali/Desktop/Hacksclusive/DigiScan/resources/wordlist.txt"
     output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
     if not os.path.exists(output_dir):
@@ -86,31 +83,37 @@ def run_ffuf_scan(target_url):
     json_filename = "ffuf_output_{}.json".format(safe_filename)
     json_file_path = os.path.join(output_dir, json_filename)
 
-    # Ensure the filename is unique if the file already exists
+    # Check for existing file and increment filename if exists
     file_counter = 1
     while os.path.exists(json_file_path):
         json_file_path = os.path.join(output_dir, "ffuf_output_{}_{}.json".format(safe_filename, file_counter))
         file_counter += 1
 
     ffuf_command = [
-        "ffuf",
+        ffuf_path,
         "-w", wordlist_path,
         "-u", target_url + "/FUZZ",
-        "-mc", "200",
+        "-mc", "200", 
         "-o", json_file_path,
         "-r"
     ]
+
     try:
         process = subprocess.Popen(ffuf_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         stdout, stderr = process.communicate()
         if process.returncode != 0:
-            print("Error running ffuf: {}, {}".format(stderr, stdout))
+            print("FFUF command failed with return code:", process.returncode)
+            return None
+
+        if os.path.exists(json_file_path):
+            print("FFUF output file created at:", json_file_path)
+            return json_file_path
+        else:
+            print("Expected FFUF output file was not created:", json_file_path)
             return None
     except Exception as e:
-        print("Subprocess execution failed: {}".format(str(e)))
+        print("Failed to execute FFUF command:", str(e))
         return None
-
-    return json_file_path
 
 def parse_ffuf_output(json_file_path):
     try:
