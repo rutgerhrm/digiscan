@@ -1,5 +1,7 @@
 import sys
 import os
+import threading
+import time
 from threading import Thread, Lock
 
 from java.io import PrintWriter
@@ -7,6 +9,8 @@ from javax.swing import JButton, JPanel, JTextField, JLabel, JScrollPane, JTextP
                          BoxLayout, SwingConstants, SwingUtilities, BorderFactory, JCheckBox, JLabel, JTabbedPane
 from javax.swing.border import EmptyBorder
 from java.awt import BorderLayout, Font, Dimension, FlowLayout
+
+from urlparse import urlparse
 
 # Manually specify the path to the modules directory
 script_dir = '/home/kali/Desktop/Hacksclusive/DigiScan'
@@ -72,6 +76,7 @@ class BurpExtender(IBurpExtender, ITab):
         self.statusBar.setHorizontalAlignment(SwingConstants.LEFT)
         self.active_scans = 0
         self.lock = Lock()
+        self.file_ready_event = threading.Event()
 
         controlPanel = JPanel(BorderLayout())
         controlPanel.add(titlePanel, BorderLayout.NORTH)
@@ -162,28 +167,44 @@ class BurpExtender(IBurpExtender, ITab):
     def runScan(self, host, norms_to_check):
         try:
             results = {}
+            # Define the path for the testssl output file
+            parsed_url = urlparse(host)
+            safe_filename = parsed_url.netloc.replace(":", "_").replace("/", "_")
+            json_filename = "testssl_output_{}.json".format(safe_filename)
+            output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
+            json_file_path = os.path.join(output_dir, json_filename)
 
             if 'U/WA.05' in norms_to_check:
-                json_output_path = check_uwa05.run_testssl(host, self.lock)  # Pass the lock
+                if not os.path.exists(json_file_path):
+                    json_output_path = check_uwa05.run_testssl(host, self.lock, json_file_path)
+                    self.file_ready_event.set()  # Signal that the file is ready
+                else:
+                    json_output_path = json_file_path
+                    self.file_ready_event.set()  # Signal that the file is ready
                 if json_output_path:
                     results['U/WA.05'] = check_uwa05.filter_keys(json_output_path)
                     SwingUtilities.invokeLater(lambda: self.updateUI('U/WA.05', results['U/WA.05']))
 
             if 'U/PW.03' in norms_to_check:
-                json_output_path = check_upw03.run_testssl(host, self.lock)  # Pass the lock
+                self.file_ready_event.wait()  # Wait until the file is created by U/WA.05
+                if not os.path.exists(json_file_path):
+                    json_output_path = check_upw03.run_testssl(host, self.lock, json_file_path)
+                else:
+                    json_output_path = json_file_path
+
                 if json_output_path:
                     results['U/PW.03'] = check_upw03.filter_keys(json_output_path)
                     SwingUtilities.invokeLater(lambda: self.updateUI('U/PW.03', results['U/PW.03']))
 
                 # Perform and handle FFUF scan
-                ffuf_output = check_upw03.run_ffuf_scan(host)  # Ensure this is defined here
+                ffuf_output = check_upw03.run_ffuf_scan(host)
                 if ffuf_output:
                     ffuf_results = check_upw03.parse_ffuf_output(ffuf_output)
                     if ffuf_results:
                         for result in ffuf_results:
-                            result['type'] = 'ffuf'  # Mark as ffuf result
+                            result['type'] = 'ffuf'
                         if 'U/PW.03' in results:
-                            results['U/PW.03'].extend(ffuf_results)  # Combine with existing results
+                            results['U/PW.03'].extend(ffuf_results)
                         else:
                             results['U/PW.03'] = ffuf_results
                         SwingUtilities.invokeLater(lambda: self.updateUI('U/PW.03', results['U/PW.03']))
@@ -251,8 +272,15 @@ class BurpExtender(IBurpExtender, ITab):
             
             icon = '&#9888;' if result.get('status') == 'warning' else '&#9989;' if result.get('status') == 'pass' else '&#10060;'
             span_class = 'warning' if result.get('status') == 'warning' else 'pass' if result.get('status') == 'pass' else 'fail'
-            return "<p><span class='{0}'>{1}</span> {2} <br><i>Advice: {3}</i></p>".format(
-                span_class, icon, result.get('description', 'No description available.'), result.get('advice', 'No specific advice available.'))
+            description = result.get('description', 'No description available.')
+            advice = result.get('advice', 'No specific advice available.')
+            found = result.get('found', '')
+
+            # Include the found field if it is present
+            found_text = "<br><b>Found:</b> {}".format(found) if found else ''
+
+            return "<p><span class='{0}'>{1}</span> {2} <br><i>Advice: {3}</i>{4}</p>".format(
+                span_class, icon, description, advice, found_text)
 
         # Process non-ffuf results
         non_ffuf_results = [r for r in data if 'ffuf' not in r.get('type', '')]
@@ -268,7 +296,6 @@ class BurpExtender(IBurpExtender, ITab):
         
         html_content += "</body></html>"
         return html_content
-
 
     def showError(self, error_message):
         import traceback
