@@ -29,12 +29,14 @@ def run_testssl(target_url, lock, json_file_path):
 
     lock.acquire()
     try:
+        # Ensure the filename is unique if the file already exists
         file_counter = 1
         while os.path.exists(json_file_path):
             json_file_path = os.path.join(output_dir, "testssl_output_{}_{}.json".format(
                 urlparse(target_url).netloc.replace(":", "_").replace("/", "_"), file_counter))
             file_counter += 1
 
+        # Run the testssl.sh script and capture output
         process = subprocess.Popen([testssl_script_path, "-oj", json_file_path, target_url],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         stdout, stderr = process.communicate()
@@ -120,20 +122,30 @@ def check_key_compliance(key, finding):
     }
 
 # Evaluate if a numeric value matches a specified range
-def evaluate_range(range_str, value):
-    match = re.match(r'(\d+)', value)
-    if match:
-        num_value = int(match.group(1))
-        if '<' in range_str and num_value < int(range_str[1:]):
-            return True
-        elif '>' in range_str and num_value > int(range_str[1:]):
-            return True
+def evaluate_range(range_str, num_value):
+    if isinstance(num_value, str):
+        num_value = int(num_value)
+
+    try:
+        if range_str.startswith('>='):
+            comparison_value = int(range_str[2:])
+            return num_value >= comparison_value
+        elif range_str.startswith('<='):
+            comparison_value = int(range_str[2:])
+            return num_value <= comparison_value
+        elif range_str.startswith('>'):
+            comparison_value = int(range_str[1:])
+            return num_value > comparison_value
+        elif range_str.startswith('<'):
+            comparison_value = int(range_str[1:])
+            return num_value < comparison_value
         elif '-' in range_str:
             min_val, max_val = map(int, range_str.split('-'))
             return min_val <= num_value <= max_val
-        elif '>=' in range_str and num_value >= int(range_str[2:]):
-            return True
-    return False
+
+        return False
+    except ValueError as e:
+        return False
 
 # Check FS ciphers compliance
 def check_fs_ciphers_compliance(finding):
@@ -207,23 +219,28 @@ def check_cert_key_size_compliance(finding):
         try:
             key_size = int(key_size_str)
             for rule in config["cert_keySize"]["rules"]:
-                if 'range' in rule and evaluate_range(rule['range'], key_size_str):
-                    return create_response("Certificate key size", finding, rule)
-                elif 'exact' in rule and rule['exact'] == key_size_str:
-                    return create_response("Certificate key size", finding, rule)
+                if 'range' in rule:
+                    if evaluate_range(rule['range'], key_size):
+                        return create_response("Certificate key size", finding, rule)
+                elif 'exact' in rule:
+                    exact_value = int(rule['exact'])
+                    if exact_value == key_size:
+                        return create_response("Certificate key size", finding, rule)
             # Fallback case if no rules match
             return {
-                'description': 'Certificate key size is {} bits'.format(key_size_str),
+                'description': 'Certificate key size is {} bits'.format(key_size),
                 'status': 'fail',
                 'advice': 'Check the certificate key size format'
             }
-        except ValueError:
+        except ValueError as e:
+            print("Debug: Error converting key size to integer: {}. Exception: {}".format(key_size_str, e))
             return {
                 'description': 'Unable to parse certificate key size',
                 'status': 'fail',
                 'advice': 'Check the certificate key size format'
             }
     else:
+        print("Debug: No numeric data found in certificate key size")
         return {
             'description': 'No numeric data found in certificate key size',
             'status': 'fail',
@@ -235,5 +252,5 @@ def create_response(key, finding, rule):
     return {
         'description': "{} is {}".format(get_friendly_name(key), finding),
         'status': rule['status'],
-        'advice': rule['advice'] if 'advice' in rule else 'No specific advice available.'
+        'advice': rule.get('advice', 'No specific advice available.')
     }
