@@ -1,9 +1,10 @@
 import json
 import subprocess
 import os
-from urlparse import urlparse  # For Python 2.7 compatibility, use urllib.parse in Python 3.x
+from urlparse import urlparse
 
 def run_testssl(target_url, lock, json_file_path):
+    # Runs the testssl.sh script on the target URL and ensures the output file is unique
     testssl_script_path = "/home/kali/Desktop/Hacksclusive/testssl.sh/testssl.sh"
     output_dir = os.path.dirname(json_file_path)
     if not os.path.exists(output_dir):
@@ -34,10 +35,11 @@ def run_testssl(target_url, lock, json_file_path):
     return json_file_path
 
 def filter_keys(json_file_path):
+    # Filters the relevant keys from the JSON data output by testssl.sh
     required_keys = {
         "cookie_secure", "cookie_httponly", "HSTS_time", 
         "X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy",
-        "Content-Security-Policy"  # Ensure CSP is included
+        "Content-Security-Policy" 
     }
 
     try:
@@ -73,6 +75,7 @@ def filter_keys(json_file_path):
     return results
 
 def run_ffuf_scan(target_url):
+    # Runs the ffuf tool to scan for hidden files and directories on the target URL
     ffuf_path = "/usr/local/bin/ffuf" 
     wordlist_path = "/home/kali/Desktop/Hacksclusive/DigiScan/resources/wordlist.txt"
     output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
@@ -117,6 +120,7 @@ def run_ffuf_scan(target_url):
         return None
 
 def parse_ffuf_output(json_file_path):
+    # Parses the output JSON file from ffuf and extracts relevant information
     try:
         with open(json_file_path, 'r') as file:
             data = json.load(file)
@@ -134,6 +138,7 @@ def parse_ffuf_output(json_file_path):
     return results
 
 def check_header_compliance(key, finding):
+    # Checks the compliance of HTTP headers based on predefined rules
     csp_errors = []
 
     if key == "HSTS_time":
