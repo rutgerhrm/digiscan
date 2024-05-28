@@ -22,6 +22,7 @@ import check_uwa05, check_upw03, check_upw05, check_c09, check_ports
 
 class BurpExtender(IBurpExtender, ITab):
     def registerExtenderCallbacks(self, callbacks):
+        # Initializes the extension and sets up the UI
         print("Loading DigiScan...")
         self._callbacks = callbacks
         self._callbacks.setExtensionName('DigiScan')
@@ -30,6 +31,7 @@ class BurpExtender(IBurpExtender, ITab):
         callbacks.addSuiteTab(self)
 
     def initUI(self):
+        # Sets up the user interface components
         self._splitpane = JSplitPane(JSplitPane.VERTICAL_SPLIT)
         self._splitpane.setBorder(EmptyBorder(10, 10, 10, 10))
 
@@ -94,6 +96,7 @@ class BurpExtender(IBurpExtender, ITab):
         self.networkScrollPane = JScrollPane(self.networkScanResults)
 
     def selectAllNorms(self, event):
+        # Selects or deselects all checkboxes
         is_selected = self.selectAll.isSelected()
         self.checkboxUWA05.setSelected(is_selected)
         self.checkboxUPW03.setSelected(is_selected)
@@ -102,6 +105,7 @@ class BurpExtender(IBurpExtender, ITab):
         self.checkboxNetworkScan.setSelected(is_selected)
 
     def startScan(self, event):
+        # Initiates the scan process based on selected norms
         host = self.hostField.getText().strip()
         if not host:
             self.statusBar.setText("Status: Please enter a valid URL to scan.")
@@ -119,7 +123,6 @@ class BurpExtender(IBurpExtender, ITab):
         with self.lock:
             self.active_scans = len(norms_to_check)
 
-        # Reset the flag
         self.ui_updated = False
 
         # Start each selected norm in a separate thread
@@ -130,7 +133,7 @@ class BurpExtender(IBurpExtender, ITab):
                 Thread(target=self.runScan, args=(host, [norm])).start()
 
     def runPortScan(self, host):
-        # Initial UI update to indicate scanning in progress
+        # Runs the port scan and updates the UI with results
         SwingUtilities.invokeLater(lambda: self.updateUI('Port Scan', "Port scanning in progress..."))
 
         try:
@@ -140,7 +143,6 @@ class BurpExtender(IBurpExtender, ITab):
             tcp_results = check_ports.parse_nmap_json(tcp_json_output_path, "TCP") if tcp_json_output_path else []
             udp_results = check_ports.parse_nmap_json(udp_json_output_path, "UDP") if udp_json_output_path else []
 
-            # Prepare results directly here to reduce function calls
             combined_results = [{'header': 'TCP Scan Results', 'type': 'title'}]
             if tcp_results:
                 combined_results.extend(tcp_results)
@@ -155,7 +157,6 @@ class BurpExtender(IBurpExtender, ITab):
 
             print("Combined Results after adding:", combined_results)
 
-            # Single point for updating UI with final results
             SwingUtilities.invokeLater(lambda: self.updateUI('Port Scan', combined_results))
 
         except Exception as e:
@@ -165,6 +166,7 @@ class BurpExtender(IBurpExtender, ITab):
             self.decrementActiveScans()
 
     def runScan(self, host, norms_to_check):
+        # Runs the selected scan norms and updates the UI with results
         try:
             results = {}
             # Define the path for the testssl output file
@@ -232,23 +234,22 @@ class BurpExtender(IBurpExtender, ITab):
 
 
     def decrementActiveScans(self):
+        # Decrements the active scan count and updates the status bar
         with self.lock:
             self.active_scans -= 1
             if self.active_scans == 0:
                 SwingUtilities.invokeLater(lambda: self.statusBar.setText("Status: Scanning completed"))
 
     def updateUI(self, norm, data):
+        # Updates the UI with scan results for a specific norm
         text_pane = None
-        # Find if the tab for this norm already exists
         tab_index = next((i for i in range(self.resultTabs.getTabCount()) if self.resultTabs.getTitleAt(i) == norm), -1)
 
         if tab_index != -1:
-            # Tab exists, get its content
             panel = self.resultTabs.getComponentAt(tab_index)
             if isinstance(panel, JScrollPane):
                 text_pane = panel.getViewport().getView()
         else:
-            # Create new tab for this norm
             text_pane = JTextPane()
             text_pane.setContentType("text/html")
             text_pane.setEditable(False)
@@ -256,7 +257,6 @@ class BurpExtender(IBurpExtender, ITab):
             self.resultTabs.addTab(norm, scrollPane)
 
         if text_pane is not None:
-            # Check if data is a string or results list
             if isinstance(data, str):
                 formatted_data = "<html><body><p style='font-family: Arial;'>{}</p></body></html>".format(data)
             else:
@@ -269,6 +269,7 @@ class BurpExtender(IBurpExtender, ITab):
             SwingUtilities.invokeLater(update_text_pane)
 
     def formatResults(self, data):
+        # Formats the scan results into HTML for display in the UI
         html_content = "<html><head><style>body {font-family: Arial, sans-serif;} .pass {color: green;} .warning {color: orange;} .fail {color: red;} .title {font-weight: bold; margin-top: 20px;}</style></head><body>"
 
         def format_individual_result(result):
@@ -303,8 +304,9 @@ class BurpExtender(IBurpExtender, ITab):
         return html_content
 
     def showError(self, error_message):
+        # Displays an error message in the status bar
         import traceback
-        tb = traceback.format_exc()  # This captures the entire traceback.
+        tb = traceback.format_exc()
         detailed_error = "Error: {}\nDetails: {}".format(error_message, tb)
         self.statusBar.setText(detailed_error)
 
