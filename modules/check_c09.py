@@ -2,18 +2,26 @@ import subprocess
 import json
 
 def run_server_check(target_url):
+    """
+    Run server check which includes fetching the server header and running Wappalyzer.
+    Combines results from both checks into a single list.
+    """
     server_results = fetch_server_header(target_url)
     technology_results = run_wappalyzer(target_url)
     return server_results + technology_results
 
 def fetch_server_header(target_url):
+    """
+    Fetch the server header using curl command.
+    Extracts and returns the server header information.
+    """
     curl_command = [
         "curl",
         "-s",
         "-o",
         "/dev/null",
         "-w",
-        "%header{server}"
+        "%{header[server]}"
     ]
     curl_command.append(target_url)
 
@@ -23,6 +31,9 @@ def fetch_server_header(target_url):
     return format_server_header_results(stdout.strip())
 
 def format_server_header_results(server_header):
+    """
+    Formats the server header results into a dictionary with description, status, advice, and found fields.
+    """
     if server_header:
         return [{
             'description': 'Server Header Information',
@@ -38,6 +49,10 @@ def format_server_header_results(server_header):
         }]
 
 def run_wappalyzer(target_url):
+    """
+    Runs Wappalyzer to detect technologies used by the target URL.
+    Parses the output and returns formatted results.
+    """
     wappalyzer_cmd = [
         "wappalyzer",
         "--disable-ssl",
@@ -60,6 +75,9 @@ def run_wappalyzer(target_url):
         }]
 
 def format_wappalyzer_results(data):
+    """
+    Formats the Wappalyzer results into a list of dictionaries with description, status, advice, and found fields.
+    """
     results = []
     for tech, details in data.items():
         # Check if the version is already included in the technology name
