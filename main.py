@@ -178,7 +178,6 @@ class BurpExtender(IBurpExtender, ITab):
             json_output_path = None
 
             if 'U/WA.05' in norms_to_check:
-                run_testssl = True
                 self.file_ready_event.clear()
                 if not os.path.exists(json_file_path):
                     json_output_path = check_uwa05.run_testssl(host, self.lock, json_file_path)
@@ -191,15 +190,11 @@ class BurpExtender(IBurpExtender, ITab):
                     SwingUtilities.invokeLater(lambda: self.updateUI('U/WA.05', results['U/WA.05']))
 
             if 'U/PW.03' in norms_to_check:
-                if 'U/WA.05' not in norms_to_check:
-                    run_testssl = True  # Ensure testssl runs if U/WA.05 is not selected
+                self.file_ready_event.wait()  # Wait until the file is created by U/WA.05
+                if not os.path.exists(json_file_path):
+                    json_output_path = check_upw03.run_testssl(host, self.lock, json_file_path)
                 else:
-                    self.file_ready_event.wait()  # Wait until the file is created by U/WA.05
-                if run_testssl:
-                    if not os.path.exists(json_file_path):
-                        json_output_path = check_upw03.run_testssl(host, self.lock, json_file_path)
-                    else:
-                        json_output_path = json_file_path
+                    json_output_path = json_file_path
 
                 if json_output_path:
                     results['U/PW.03'] = check_upw03.filter_keys(json_output_path)
@@ -234,6 +229,7 @@ class BurpExtender(IBurpExtender, ITab):
             SwingUtilities.invokeLater(lambda: self.showError("An error occurred: " + str(e)))
         finally:
             self.decrementActiveScans()
+
 
     def decrementActiveScans(self):
         with self.lock:
