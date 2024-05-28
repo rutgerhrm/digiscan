@@ -73,7 +73,7 @@
         ]
     },
     "DH_groups": {
-        "friendly_name": "Finite Field-groups",
+        "friendly_name": "DH Groups",
         "ffdhe4096": {
             "status": "pass",
             "advice": "DH Groups configuration is compliant"
@@ -107,100 +107,9 @@
         }
     },
     "FS_ECDHE_curves": {
-        "friendly_name": "Elliptic Curves",
+        "friendly_name": "ECDHE Curves",
         "pass": ["secp384r1", "secp256r1", "X448", "X25519"],
         "warning": ["secp224r1"],
         "fail": "default"
-    },
-    "cookie_secure": {
-        "friendly_name": "Secure Cookie tag",
-        "missing": {
-            "status": "warning",
-            "advice": "Ensure that 'Secure' attribute is set for cookies"
-        },
-        "present": {
-            "status": "pass",
-            "advice": "The 'Secure' attribute is set for cookies"
-        }
-    },
-    "cookie_httponly": {
-        "friendly_name": "HttpOnly Cookie tag",
-        "missing": {
-            "status": "warning",
-            "advice": "Ensure that 'HttpOnly' attribute is set for cookies"
-        },
-        "present": {
-            "status": "pass",
-            "advice": "The 'HttpOnly' attribute is set for cookies"
-        }
-    },
-    "HSTS_time": {
-        "friendly_name": "HSTS Time",
-        "rules": [
-            {
-                "range": ">=31536000",
-                "status": "pass",
-                "advice": "HSTS time meets or exceeds the requirement of 31536000 seconds"
-            },
-            {
-                "range": "<31536000",
-                "status": "fail",
-                "advice": "Increase HSTS time to at least 31536000 seconds"
-            }
-        ]
-    },
-    "X-Frame-Options": {
-        "friendly_name": "X-Frame-Options Header",
-        "deny": {
-            "status": "pass",
-            "advice": "X-Frame-Options is set to 'deny'"
-        },
-        "sameorigin": {
-            "status": "pass",
-            "advice": "X-Frame-Options is set to 'sameorigin'"
-        },
-        "default": {
-            "status": "fail",
-            "advice": "Set X-Frame-Options to either 'DENY' or 'SAMEORIGIN'"
-        }
-    },
-    "X-Content-Type-Options": {
-        "friendly_name": "X-Content-Type-Options Header",
-        "nosniff": {
-            "status": "pass",
-            "advice": "X-Content-Type-Options is set to 'nosniff'"
-        },
-        "default": {
-            "status": "fail",
-            "advice": "Set X-Content-Type-Options to 'nosniff'"
-        }
-    },
-    "Referrer-Policy": {
-        "friendly_name": "Referrer-Policy Header",
-        "same-origin": {
-            "status": "pass",
-            "advice": "Referrer-Policy is set to 'same-origin'"
-        },
-        "noreferrer": {
-            "status": "pass",
-            "advice": "Referrer-Policy is set to 'noreferrer'"
-        },
-        "default": {
-            "status": "fail",
-            "advice": "Set Referrer-Policy to either 'same-origin' or 'noreferrer'"
-        }
-    },
-    "Content-Security-Policy": {
-        "friendly_name": "Content-Security-Policy Header",
-        "required_directives": {
-            "default-src": "'self'",
-            "frame-src": "'self'",
-            "frame-ancestors": "'self'"
-        },
-        "advice_list": [
-            "Ensure no 'unsafe-inline' unless 'nonce' present",
-            "Ensure no 'unsafe-eval'",
-            "Ensure no HTTP sources (use HTTPS only)"
-        ]
     }
 }
