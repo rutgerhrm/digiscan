@@ -1,16 +1,17 @@
 import subprocess
 
-# Define which HTTP methods are safe
+# Define which HTTP methods are considered safe
 SAFE_METHODS = {
-    "GET", "POST", "HEAD", "OPTIONS"
-}
-
-# Define HTTP methods that typically require a body
-METHODS_REQUIRING_BODY = {
-    "POST", "PUT", "PATCH", "DELETE"
+    "GET", "POST"
 }
 
 def run_http_method_checks(target_url):
+    """
+    Run HTTP method checks on the target URL.
+
+    Reads the HTTP methods from a wordlist and checks each method on the target URL.
+    Returns the results with a status indicating if the method is safe, a warning, or should be restricted.
+    """
     methods_wordlist_path = "/home/kali/Desktop/Hacksclusive/DigiScan/resources/methods.txt"
     results = []
 
@@ -25,23 +26,24 @@ def run_http_method_checks(target_url):
             'found': 'Status Code: {}'.format(status_code)
         }
 
+        # Determine the status and advice based on the method and status code
         if method in SAFE_METHODS:
             if status_code == "200":
                 result['status'] = 'pass'
-                result['advice'] = 'This method is allowed and functioning as expected.'
+                result['advice'] = 'The method is allowed and functioning as expected.'
             else:
                 result['status'] = 'warning'
-                result['advice'] = 'This method should be allowed but returned an unexpected status code.'
+                result['advice'] = 'Method should be allowed but is not responding as expected.'
         else:
             if status_code == "200":
                 result['status'] = 'fail'
-                result['advice'] = 'This method should not be allowed.'
+                result['advice'] = 'This method should not be allowed. Investigate and restrict access.'
             elif status_code in ["404", "501", "000", "405", "400", "401"]:
                 result['status'] = 'pass'
-                result['advice'] = 'This method is not allowed as expected.'
+                result['advice'] = 'Method is either not found or not implemented as expected.'
             else:
                 result['status'] = 'warning'
-                result['advice'] = 'This method returned an unexpected status code.'
+                result['advice'] = 'Unexpected status code for method. Needs further investigation.'
 
         results.append(result)
 
@@ -50,23 +52,23 @@ def run_http_method_checks(target_url):
     return results
 
 def check_http_method(target_url, method):
+    """
+    Check the response status code for a given HTTP method on the target URL.
+
+    Uses curl to send the HTTP request and returns the status code.
+    """
     curl_command = [
         "curl",
-        "-s",
-        "-L",
-        "-o",
+        "-s",  # Silent mode
+        "-L",  # Follow redirects
+        "-o",  # Output to /dev/null
         "/dev/null",
-        "-w",
+        "-w",  # Write out HTTP status code
         "%{http_code}",
-        "-X",
+        "-X",  # Specify HTTP request method
         method,
         target_url
     ]
-
-    # Add a dummy body for methods requiring a body to avoid 411 errors
-    if method in METHODS_REQUIRING_BODY:
-        curl_command.extend(["-d", "dummy_body"])
-
     process = subprocess.Popen(curl_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     stdout, stderr = process.communicate()
     return stdout.strip()
