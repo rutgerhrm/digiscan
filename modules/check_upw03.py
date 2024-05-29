@@ -4,7 +4,7 @@ import os
 from urlparse import urlparse
 
 def run_testssl(target_url, lock, json_file_path):
-    # Runs the testssl.sh script on the target URL and ensures the output file is unique
+    # Runs the testssl.sh script on the target URL and ensures the output file is unique (CHANGE FILE PATH)
     testssl_script_path = "/home/kali/digiscan/tools/testssl.sh/testssl.sh"
     output_dir = os.path.dirname(json_file_path)
     if not os.path.exists(output_dir):
