@@ -14,7 +14,7 @@ def run_network_scan(target_url):
     Returns:
     tuple: Paths to the TCP and UDP JSON output files.
     """
-    # Set up directories and filenames
+    # Set up directories and filenames (CHANGE FILEPATH)
     output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
