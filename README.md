@@ -12,6 +12,7 @@ DigiScan provides automated security configuration validation against DigiD norm
 
 - Burp Suite (Professional or Community Edition).
 - Jython Standalone.
+- Go language.
 - External tools:
   - [testssl.sh](https://testssl.sh/)
   - [ffuf](https://github.com/ffuf/ffuf)
