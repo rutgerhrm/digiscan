@@ -4,9 +4,9 @@ import os
 import re
 from urlparse import urlparse
 
-# Load the configuration settings from a JSON file
+# Load the configuration settings from a JSON file (CHANGE FILE PATH)
 def load_config():
-    config_path = '/home/kali/Desktop/Hacksclusive/DigiScan/resources/config.json'
+    config_path = '/home/kali/digiscan/resources/config.json'
     with open(config_path, 'r') as file:
         return json.load(file)
 
@@ -20,9 +20,9 @@ required_keys = set(config.keys())
 def get_friendly_name(key):
     return config.get(key, {}).get("friendly_name", key)
 
-# Function to run testssl.sh on a given URL, manage file output, and handle subprocesses
+# Function to run testssl.sh on a given URL, manage file output, and handle subprocesses (CHANGE FILE PATH)
 def run_testssl(target_url, lock, json_file_path):
-    testssl_script_path = "/home/kali/Desktop/Hacksclusive/testssl.sh/testssl.sh"
+    testssl_script_path = "/home/kali/digiscan/tools/testssl.sh/testssl.sh"
     output_dir = os.path.dirname(json_file_path)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
