@@ -75,7 +75,7 @@ def filter_keys(json_file_path):
     return results
 
 def run_ffuf_scan(target_url):
-    # Runs the ffuf tool to scan for hidden files and directories on the target URL
+    # Runs the ffuf tool to scan for hidden files and directories on the target URL (CHANGE FILE PATH)
     ffuf_path = "/usr/local/bin/ffuf" 
     wordlist_path = "/home/kali/Desktop/Hacksclusive/DigiScan/resources/wordlist.txt"
     output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
