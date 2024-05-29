@@ -35,7 +35,7 @@ To install DigiScan, follow these steps:
    ./setup.sh
    ```
    
-3. Change the file paths to the config file and/or testssl.sh defined in `check_uwa05.py` and `check_upw03.py`
+3. Change the file paths to the config file, external tools and output directory defined in the check modules!
   
 4. Open Burp Suite and navigate to the Extender tab.
 
