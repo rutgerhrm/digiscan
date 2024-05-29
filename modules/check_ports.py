@@ -18,7 +18,6 @@ def run_network_scan(target_url):
     output_dir = "/home/kali/Desktop/Hacksclusive/DigiScan/output"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-        logging.debug('Output directory created at: %s' % output_dir)
 
     parsed_url = urlparse(target_url)
     target_hostname = parsed_url.hostname or target_url
@@ -84,7 +83,6 @@ def convert_xml_to_json(xml_file_path, json_file_path, scan_type):
             with open(json_file_path, 'w') as f:
                 f.write(stdout)
             os.remove(xml_file_path)
-            logging.debug("%s JSON created and XML deleted" % scan_type)
         else:
             logging.error("Error converting %s XML to JSON: %s, %s" % (scan_type, stderr, stdout))
     except Exception as e:
