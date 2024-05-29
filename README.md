@@ -59,8 +59,8 @@ Include an example run of the tool.
 
 ## Key Checks
 
-- **U/WA.05** - Reliability of Information: Ensures compliance with DigiD norms for TLS version, HSTS time, cipher suites, RSA key length, finite field group, elliptic curve, and OCSP stapling.
-- **U/PW.03** - Restricting Unwanted Disclosure of Information: Checks HTTP headers, session cookies, and potential directory listings using testssl.sh FFUF to ensure proper security configurations.
+- **U/WA.05** - Reliability of Information: Ensures compliance with DigiD norms for TLS version, HSTS time, cipher suites, RSA key length, finite field group, elliptic curve, and OCSP stapling with testssl.sh.
+- **U/PW.03** - Restricting Unwanted Disclosure of Information: Checks HTTP and security headers with testssl.sh and potential directory listings using FFUF and a `common-and-dutch.txt` wordlist (expandable in the future) to ensure proper security configurations.
 - **U/PW.05** - Preventing Misuse of Management Functions: Validates that only allowed HTTP methods are enabled and checks their status codes to prevent unauthorized access.
 - **C.09** - Preventing Outdated Web Components: Identifies and reports the technology stack and versions of a website using Wappalyzer and a simple banner grab to ensure no outdated components are used.
 
