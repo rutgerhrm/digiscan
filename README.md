@@ -11,9 +11,9 @@ DigiScan provides automated security configuration validation against DigiD norm
 ## Requirements
 
 - Burp Suite (Professional or Community Edition).
-- [Jython Standalone](https://www.jython.org/download.html)
+- Jython Standalone.
 - External tools:
-  - [testssl.sh](https://testssl.sh/))
+  - [testssl.sh](https://testssl.sh/)
   - [ffuf](https://github.com/ffuf/ffuf)
   - [Wappalyzer](https://github.com/Webklex/wappalyzer)
   - [nmap-formatter](https://github.com/vdjagilev/nmap-formatter)
@@ -45,9 +45,10 @@ To install DigiScan, follow these steps:
 ## Usage
 
 1. Open Burp Suite and navigate to the DigiScan tab.
-2. Set your target and scan settings in the DigiScan tab.
-3. Press "Start Scan" to begin the compliance checks.
-4. View detailed results and potential advice in the DigiScan panel.
+2. Set your full target-URL (so including https:// prefix) in the input field.
+3. Select the DigiD-norms you want to check.
+4. Press "Start Scan" to begin the compliance checks.
+5. View detailed results and potential advice in the DigiScan panel.
 
 ### Example
 
@@ -55,10 +56,10 @@ Include an example run of the tool.
 
 ## Key Checks
 
-- **U/WA.05** - Check web application security settings.
-- **U/PW.03** - Check password policies.
-- **U/PW.05** - Check HTTP methods and their responses.
-- **C.09** - Check server and technology information.
+- **U/WA.05** - Reliability of Information: Ensures compliance with DigiD norms for TLS version, HSTS time, cipher suites, RSA key length, finite field group, elliptic curve, and OCSP stapling.
+- **U/PW.03** - Restricting Unwanted Disclosure of Information: Checks HTTP headers, session cookies, and potential directory listings using testssl.sh FFUF to ensure proper security configurations.
+- **U/PW.05** - Preventing Misuse of Management Functions: Validates that only allowed HTTP methods are enabled and checks their status codes to prevent unauthorized access.
+- **C.09** - Preventing Outdated Web Components: Identifies and reports the technology stack and versions of a website using Wappalyzer and a simple banner grab to ensure no outdated components are used.
 
 ---
 
