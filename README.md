@@ -34,12 +34,14 @@ To install DigiScan, follow these steps:
    chmod +x setup.sh
    ./setup.sh
    ```
+   
+3. Change the file paths to the config file and/or testssl.sh defined in `check_uwa05.py` and `check_upw03.py`
+  
+4. Open Burp Suite and navigate to the Extender tab.
 
-3. Open Burp Suite and navigate to the Extender tab.
+5. Add the [Jython Standalone JAR](https://repo1.maven.org/maven2/org/python/jython-standalone/2.7.4b2/jython-standalone-2.7.4b2.jar) in Burp Suite under Extensions > Extensions settings > Python Environment to be able to run Python extensions.
 
-4. Add the [Jython Standalone JAR](https://repo1.maven.org/maven2/org/python/jython-standalone/2.7.4b2/jython-standalone-2.7.4b2.jar) in Burp Suite under Extensions > Extensions settings > Python Environment to be able to run Python extensions.
-
-5. Load the main.py file under Extensions > Installed > Add.
+6. Load the main.py file under Extensions > Installed > Add.
 
 ---
 
